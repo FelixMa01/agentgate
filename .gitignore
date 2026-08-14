@@ -24,3 +24,8 @@ build/
 .vscode/
 .idea/
 *.swp
+
+# Coverage artifacts
+.coverage
+coverage.json
+htmlcov/
