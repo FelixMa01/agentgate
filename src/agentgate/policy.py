@@ -35,8 +35,8 @@ class Rule:
         for key, pattern in self.match.items():
             actual = self._dig(event, key)
             if actual is None:
-                # Allow glob suffix: e.g. match key 'file_glob' digs event 'file'.
-                base = key.removesuffix("_glob")
+                # Allow glob/regex suffix: e.g. match key 'file_glob' digs event 'file'.
+                base = key.removesuffix("_glob").removesuffix("_regex")
                 if base != key:
                     actual = self._dig(event, base)
             if actual is None:
@@ -65,6 +65,7 @@ class Rule:
         if pattern == "*":
             return True
         if pattern.startswith("~"):
+            # Explicit regex form: ~pattern (or ~pattern list) — re.search semantics.
             try:
                 return bool(re.search(pattern[1:], str(actual)))
             except re.error:
@@ -124,10 +125,14 @@ def load_policy(path: str | Path) -> Policy:
         raise ValueError(f"Policy root must be a mapping, got {type(raw).__name__}")
 
     rules = []
-    for r in raw.get("rules", []):
+    for i, r in enumerate(raw.get("rules", [])):
         r2 = dict(r)
         if "action" in r2 and isinstance(r2["action"], str):
             r2["action"] = Action(r2["action"])
+        # Auto-assign id from name (or positional index if name missing)
+        # so policies don't have to repeat themselves.
+        if "id" not in r2:
+            r2["id"] = r2.get("name") or f"rule-{i}"
         rules.append(Rule(**r2))
     return Policy(
         version=int(raw.get("version", 1)),

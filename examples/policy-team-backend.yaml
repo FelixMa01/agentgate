@@ -1,0 +1,80 @@
+# Team policy for a multi-developer AI agent fleet.
+# - Allows the agent to read any file (Read tool).
+# - Allows git operations except force-push.
+# - Requires human approval for file deletions and PR merges.
+# - Blocks outbound HTTP except to a known-good allowlist.
+# - Tags all events with the team and project so the central audit DB
+#   (used with `agentgate push-events`) can filter by team.
+
+default: deny
+network: true
+
+metadata:
+  team: backend-platform
+  project: api-gateway
+  owner: "[email protected]"
+
+rules:
+  - name: allow-read-anywhere
+    match:
+      tool: Read
+    action: allow
+
+  - name: allow-safe-git
+    match:
+      tool: Bash
+      command_regex:
+        - "~^git\\s+(status|log|diff|show|branch|fetch|pull|add|commit|push(\\s+origin\\s+\\w+)?)$"
+    action: allow
+
+  - name: deny-force-push
+    match:
+      tool: Bash
+      command_regex:
+        - "~git\\s+push\\s+.*--force"
+        - "git\\s+push\\s+-f\\b"
+    action: deny
+    reason: "Force-pushing rewrites shared history. Use a PR instead."
+
+  - name: ask-pr-merge
+    match:
+      tool: Bash
+      command_regex:
+        - "~^gh\\s+pr\\s+merge\\b"
+        - "^git\\s+merge\\s+--no-ff"
+    action: ask
+    reason: "Merging a PR is irreversible — needs a human click."
+
+  - name: ask-file-deletion
+    match:
+      tool: Bash
+      command_regex:
+        - "~^rm\\s+"
+        - "^rmdir\\s+"
+    action: ask
+    reason: "Deleting files requires a human click."
+
+  - name: allow-network-allowlist
+    match:
+      tool: WebFetch
+      url_glob:
+        - "https://github.com/**"
+        - "https://pypi.org/**"
+        - "https://docs.python.org/**"
+    action: allow
+
+  - name: deny-network-other
+    match:
+      tool: WebFetch
+    action: deny
+    reason: "Only github.com, pypi.org, docs.python.org are allowed."
+
+  - name: deny-destructive
+    match:
+      tool: Bash
+      command_regex:
+        - "~rm\\s+-rf\\b"
+        - ":\\(\\)\\{.*\\};:"
+        - "mkfs\\."
+    action: deny
+    reason: "Destructive command — blocked."

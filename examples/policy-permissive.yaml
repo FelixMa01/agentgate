@@ -23,7 +23,7 @@ rules:
     name: Block disk formatting
     match:
       tool: Bash
-      command_regex: "(?i)\\b(mkfs|fdisk|dd)\\b"
+      command_regex: "~(?i)\\b(mkfs|fdisk|dd)\\b"
     action: deny
     reason: "Disk formatting / block-level writes"
 

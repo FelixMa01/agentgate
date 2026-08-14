@@ -1,0 +1,60 @@
+# Read-only policy — the AI agent can ONLY read files and run safe commands.
+# Use this for code review / exploration sessions where you don't want the
+# agent to modify anything.
+#
+# Test:
+#   agentgate eval -p examples/policy-readonly.yaml \
+#     --event-json '{"tool": "Read", "file_path": "/etc/passwd"}'
+#   # → allow (Read is always allowed)
+#
+#   agentgate eval -p examples/policy-readonly.yaml \
+#     --event-json '{"tool": "Bash", "command": "rm -rf /"}'
+#   # → deny (matches deny-destructive-commands)
+
+default: deny
+network: false
+
+rules:
+  - name: allow-read
+    match:
+      tool: Read
+    action: allow
+
+  - name: allow-safe-bash
+    match:
+      tool: Bash
+      command_glob:
+        - "ls*"
+        - "cat *"
+        - "head *"
+        - "tail *"
+        - "grep *"
+        - "git status"
+        - "git log*"
+        - "git diff*"
+    action: allow
+
+  - name: deny-writes
+    match:
+      tool: [Write, Edit, MultiEdit]
+    action: deny
+    reason: "Read-only session — file mutations are not allowed."
+
+  - name: deny-destructive-bash
+    match:
+      tool: Bash
+      command_regex:
+        - "~rm\\s+-rf\\b"
+        - ":\\(\\)\\{.*\\};:"     # fork bombs
+        - "dd\\s+if=.*of=/dev/"
+        - "mkfs\\."
+        - "shutdown|reboot|halt"
+        - "chmod\\s+-R\\s+777"
+    action: deny
+    reason: "Destructive command — denied by read-only policy."
+
+  - name: deny-network
+    match:
+      tool: [WebFetch, WebSearch, NotebookEdit]
+    action: deny
+    reason: "Read-only session — network calls are disabled."
