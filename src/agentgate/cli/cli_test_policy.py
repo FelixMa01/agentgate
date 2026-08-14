@@ -47,14 +47,11 @@ def test_cmd(
 
     if event is None or event == "-":
         # try stdin if it's piped, else expect --tool/--command
-        if not sys.stdin.isatty():
-            raw = sys.stdin.read().strip()
-            if raw:
-                ev = json.loads(raw)
-            else:
-                ev = {}
-        else:
+        if sys.stdin.isatty():
             ev = {}
+        else:
+            raw = sys.stdin.read().strip()
+            ev = json.loads(raw) if raw else {}
         if not (tool or command or url or path_) and not ev:
             raise click.UsageError("Provide EVENT (file or stdin JSON) OR --tool/--command/--url/--path")
     elif Path(event).exists():

@@ -1,5 +1,6 @@
 """`agentgate lint` - check a policy.yaml for common mistakes."""
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 
@@ -25,7 +26,7 @@ def lint(policy: str, quiet: bool) -> None:
 
     warnings, errors = [], []
     seen_ids: set[str] = set()
-    for i, rule in enumerate(policy_obj.rules):
+    for _i, rule in enumerate(policy_obj.rules):
         if rule.id in seen_ids:
             errors.append(f"duplicate rule id: {rule.id!r}")
         seen_ids.add(rule.id)

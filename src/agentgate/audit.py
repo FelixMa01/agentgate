@@ -114,10 +114,8 @@ class Audit:
                 row_data = f"{prev_hash or ''}|{r['ts']}|{r['source']}|{r['agent'] or ''}|{r['action']}|{r['rule_id'] or ''}|{r['event_json']}|{r['reason'] or ''}"
                 expected = hashlib.sha256(row_data.encode("utf-8")).hexdigest()
                 checked += 1
-                if expected != r["chain_hash"] or r["prev_chain_hash"] != prev_hash:
-                    if first_broken is None:
-                        first_broken = r["id"]
-                    # Continue to count broken rows
+                if (expected != r["chain_hash"] or r["prev_chain_hash"] != prev_hash) and first_broken is None:
+                    first_broken = r["id"]
                 prev_hash = r["chain_hash"]
             return {
                 "valid": first_broken is None,

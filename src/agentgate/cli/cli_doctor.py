@@ -1,5 +1,6 @@
 """`agentgate doctor` - check Python version, deps, optional tools."""
 from __future__ import annotations
+
 import shutil
 import sys
 from pathlib import Path
@@ -54,7 +55,7 @@ def doctor(quiet: bool) -> None:
     if claude_settings.exists():
         _print_check("claude hook", f"{claude_settings}", True, quiet)
     else:
-        click.echo(f"  claude hook: not installed (run `agentgate install-hook`)")
+        click.echo("  claude hook: not installed (run `agentgate install-hook`)")
 
     # Notification config
     slack_url = None

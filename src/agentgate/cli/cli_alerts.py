@@ -1,5 +1,6 @@
 """`agentgate alerts` - evaluate alert rules against the audit DB."""
 from __future__ import annotations
+
 import sys
 import time
 from pathlib import Path

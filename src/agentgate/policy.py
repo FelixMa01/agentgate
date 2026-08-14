@@ -37,7 +37,7 @@ class Mode(StrEnum):
     CI = "ci"
 
     @classmethod
-    def from_env(cls) -> "Mode":
+    def from_env(cls) -> Mode:
         raw = os.environ.get("AGENTGATE_MODE", "enforce").lower().strip()
         for m in cls:
             if m.value == raw:
@@ -147,10 +147,7 @@ class Policy:
         """
         if tool_name in self.known_tools:
             return True
-        for rule in self.rules:
-            if "tool" in rule.match and rule.match["tool"] == tool_name:
-                return True
-        return False
+        return any(rule.match.get("tool") == tool_name for rule in self.rules if "tool" in rule.match)
 
     def effective_action(self, action: Action) -> Action:
         """Apply current mode to a raw decision.

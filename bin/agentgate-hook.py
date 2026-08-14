@@ -12,6 +12,7 @@ path into settings.json. We expect either:
 Either way, the explicit src/ insertion below is a safety net.
 """
 from __future__ import annotations
+
 import sys
 from pathlib import Path
 

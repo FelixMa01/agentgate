@@ -1,3 +1,5 @@
+import contextlib
+
 """Tests for the dashboard HTTP endpoints."""
 import json
 import os
@@ -36,12 +38,12 @@ def db_path(tmp_path):
 def server(db_path):
     """Start dashboard server in a background thread via click CliRunner.invoke."""
     import threading
+
     from click.testing import CliRunner
 
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
 
-    started = threading.Event()
     stop = threading.Event()
 
     def run():
@@ -50,17 +52,16 @@ def server(db_path):
         # via ctx.invoke. Easier: spawn process? No, CliRunner cannot background.
         # Workaround: invoke dashboard in a thread with standalone_mode=False
         # won't run the server either. Use threading.Thread with the actual module:
-        from agentgate.cli.cli_dashboard import dashboard
         from click.testing import CliRunner as _R
+
+        from agentgate.cli.cli_dashboard import dashboard
         runner = _R()
-        try:
+        with contextlib.suppress(SystemExit):
             runner.invoke(
                 dashboard,
                 ["--db", str(db_path), "--port", str(port), "--host", "127.0.0.1"],
                 catch_exceptions=False,
             )
-        except SystemExit:
-            pass
 
     t = threading.Thread(target=run, daemon=True)
     t.start()

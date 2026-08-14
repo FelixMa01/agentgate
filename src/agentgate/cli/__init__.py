@@ -25,6 +25,7 @@ from .cli_alerts import alerts
 from .cli_approval_server import approval_server
 from .cli_ask_test import ask_test
 from .cli_audit import cli_audit
+from .cli_audit_verify import audit_verify
 from .cli_dashboard import dashboard
 from .cli_detect_agents import detect_agents
 from .cli_docs import docs
@@ -40,7 +41,6 @@ from .cli_proxy import proxy
 from .cli_replay import replay
 from .cli_stats import stats
 from .cli_test_policy import policy_group
-from .cli_audit_verify import audit_verify
 from .cli_validate import validate
 
 for _cmd in (

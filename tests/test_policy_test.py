@@ -7,7 +7,6 @@ from click.testing import CliRunner
 from agentgate import policy as policy_mod
 from agentgate.cli.__init__ import main
 
-
 EXAMPLE = "examples/policy-secure.yaml"
 
 
@@ -22,7 +21,7 @@ def test_evaluate_explain_match():
 
 def test_evaluate_explain_no_match():
     p = policy_mod.load_policy(EXAMPLE)
-    result = p.evaluate_explain({"tool": "Write", "path": "/tmp/x", "agent": "x", "source": "x", "agent": "x", "source": "x"})
+    result = p.evaluate_explain({"tool": "Write", "path": "/tmp/x", "agent": "x", "source": "x"})
     assert result["matched_rule"] is None
     assert result["decision"] == result["default"]
 
@@ -80,7 +79,8 @@ def test_policy_mode_ci_promotes_ask_to_deny():
 
 
 def test_evaluate_explain_includes_mode():
-    import os, json
+    import json
+    import os
     os.environ["AGENTGATE_MODE"] = "observe"
     p = policy_mod.load_policy(EXAMPLE)
     result = p.evaluate_explain({"tool": "Bash", "command": "ls", "agent": "x", "source": "x"})
@@ -93,7 +93,10 @@ def test_evaluate_explain_includes_mode():
 
 def test_unknown_tool_default_falls_through_to_default_action():
     """If unknown_tool_action is not set, unknown tools hit default_action."""
-    import yaml, tempfile, os
+    import os
+    import tempfile
+
+    import yaml
     os.environ.pop("AGENTGATE_MODE", None)
     with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
         yaml.dump({"version": 1, "default": "deny", "rules": []}, f)
@@ -106,7 +109,10 @@ def test_unknown_tool_default_falls_through_to_default_action():
 
 def test_unknown_tool_action_ask_when_set():
     """If unknown_tool_action=ask, unknown tools are surfaced."""
-    import yaml, tempfile, os
+    import os
+    import tempfile
+
+    import yaml
     os.environ.pop("AGENTGATE_MODE", None)
     with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
         yaml.dump({"version": 1, "default": "deny",
@@ -131,7 +137,10 @@ def test_is_known_tool():
 
 def test_known_tools_explicit_allowlist():
     """known_tools list bypasses unknown_tool_action."""
-    import yaml, tempfile, os
+    import os
+    import tempfile
+
+    import yaml
     os.environ.pop("AGENTGATE_MODE", None)
     with tempfile.NamedTemporaryFile(suffix=".yaml", mode="w", delete=False) as f:
         yaml.dump({"version": 1, "default": "deny",

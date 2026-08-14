@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-14
+
+### Added
+- **`agentgate policy test`** + **`policy explain`** — dry-run events against a policy without side effects. Returns decision + matched rule + raw vs effective action + all candidates considered. Useful for debugging why a rule denied something.
+- **Enforcement modes** (`enforce` / `observe` / `ci`) — `AGENTGATE_MODE` env var selects. CI mode auto-promotes `ASK` to `DENY` for non-interactive runs. Observe mode records decisions but never blocks.
+- **Unknown-tool fail-closed** — `unknown_tool_action` + `known_tools` in policy schema. Surfaces MCP tools that aren'''t referenced in any rule.
+- **Approval provenance** — `event_provenance()` SHA-256 hashes the event at ASK time; replay detects payload tampering with `PROVENANCE MISMATCH`.
+- **Hash-chain audit** — every event row stores `chain_hash = SHA256(prev_hash + own)`. `agentgate audit verify` walks the chain offline and returns exit 1 if any row was tampered.
+- `agentgate audit` is now a group with `show` + `verify` subcommands.
+- 22 new tests (91 → 113 total).
+
+### Internal
+- `Policy.evaluate_explain()` returns both `raw_action` and `effective_action` so dashboards can show what the policy said vs what the mode allowed.
+- `Policy.is_known_tool(name)` checks all rules for tool references.
+
 ## [0.8.0] - 2026-08-14
 
 ### Added

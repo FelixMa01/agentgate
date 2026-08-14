@@ -29,7 +29,6 @@ AGENT_MARKERS = [
 @click.command(name="detect-agents")
 def detect_agents() -> None:
     """List installed AI coding agents on this host."""
-    home = Path.home()
     found = []
     for name, marker in AGENT_MARKERS:
         p = Path(os.path.expanduser(marker))
