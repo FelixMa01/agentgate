@@ -5,7 +5,7 @@ Title: Show HN: AgentGate – firewall for AI coding agents
 I've spent the last 5 days building a small tool that sits between Claude Code (and friends) and the rest of your machine. It intercepts every tool call and network request the agent makes, applies a single YAML policy, and writes everything to a SQLite audit log you can browse in a single-page dashboard.
 
 GitHub: https://github.com/FelixMa01/agentgate
-Try it: `uv tool install agentgate` (or `pip install agentgate` once PyPI'd)
+Try it: `uv tool install agentgate-firewall` (or `pip install agentgate-firewall`)
 
 ## What it does
 

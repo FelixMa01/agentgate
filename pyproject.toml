@@ -1,5 +1,5 @@
 [project]
-name = "agentgate"
+name = "agentgate-firewall"
 version = "0.2.0"
 description = "Firewall for AI coding agents — intercept, log, approve every action."
 readme = "README.md"
