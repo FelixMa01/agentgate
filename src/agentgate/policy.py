@@ -79,6 +79,19 @@ class Policy:
     default_action: Action = Action.ALLOW
     rules: list[Rule] = field(default_factory=list)
     network: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def allowed_domains(self) -> list[str]:
+        return self.network.get("allowed_domains", []) or []
+
+    @property
+    def denied_domains(self) -> list[str]:
+        return self.network.get("denied_domains", []) or []
+
+    @property
+    def require_https(self) -> bool:
+        return bool(self.network.get("require_https", False))
 
     def evaluate(self, event: dict) -> tuple[Action, Rule | None]:
         for rule in self.rules:
@@ -118,5 +131,6 @@ def load_policy(path: str | Path) -> Policy:
         version=int(raw.get("version", 1)),
         default_action=Action(raw.get("default", "allow")),
         rules=rules,
-        network=raw.get("network", {}),
+        network=raw.get("network", {}) or {},
+        metadata=raw.get("metadata", {}) or {},
     )

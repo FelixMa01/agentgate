@@ -1,0 +1,39 @@
+version: 1
+metadata:
+  author: agentgate-example
+  name: permissive
+  version: 1
+  description: |
+    Developer mode — almost everything allowed, only the dangerous
+    operations are blocked. Use this on your own machine for solo dev.
+  last_reviewed: 2026-08-14
+
+default: allow
+
+rules:
+  - id: deny-rm-rf
+    name: Block destructive rm
+    match:
+      tool: Bash
+      command_glob: "rm -rf /*"
+    action: deny
+    reason: "Mass deletion outside repo"
+
+  - id: deny-disk-format
+    name: Block disk formatting
+    match:
+      tool: Bash
+      command_regex: "(?i)\\b(mkfs|fdisk|dd)\\b"
+    action: deny
+    reason: "Disk formatting / block-level writes"
+
+  - id: ask-publish
+    name: Require approval for publish operations
+    match:
+      tool: Bash
+      command_glob: ["npm publish *", "pypi upload *", "git push *origin*"]
+    action: ask
+    reason: "Publishing is hard to reverse"
+
+network:
+  require_https: true

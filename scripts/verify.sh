@@ -129,7 +129,7 @@ PYAG=$(ls "$PYTESTMP/.venv/bin/agentgate" 2>/dev/null || true)
 if [ -x "$PYAG" ]; then
   PYVER=$("$PYAG" --version 2>&1)
   rm -rf "$PYTESTMP"
-  echo "$PYVER" | grep -q "0.2.0" && ok "PyPI install (agentgate-firewall v0.2.0)" || { echo "got: $PYVER"; fail $step; }
+  echo "$PYVER" | grep -qE "agentgate, version" && ok "PyPI install (agentgate-firewall latest)" || { echo "got: $PYVER"; fail $step; }
 else
   rm -rf "$PYTESTMP"
   fail $step

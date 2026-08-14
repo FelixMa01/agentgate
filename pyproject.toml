@@ -1,6 +1,6 @@
 [project]
 name = "agentgate-firewall"
-version = "0.2.0"
+version = "0.3.0"
 description = "Firewall for AI coding agents — intercept, log, approve every action."
 readme = "README.md"
 license = "Apache-2.0"
@@ -41,7 +41,7 @@ Issues = "https://github.com/FelixMa01/agentgate/issues"
 Changelog = "https://github.com/FelixMa01/agentgate/releases"
 
 [project.scripts]
-agentgate = "agentgate.cli:main"
+agentgate = "agentgate.cli.__init__:main"
 
 [build-system]
 requires = ["hatchling"]

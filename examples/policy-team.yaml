@@ -1,0 +1,76 @@
+version: 1
+metadata:
+  author: agentgate-example
+  name: team
+  version: 1
+  description: |
+    Team / shared mode — meant for shared repos. Logs everything,
+    requires human approval for risky ops, but lets the agent move fast
+    on routine work.
+  last_reviewed: 2026-08-14
+
+default: allow
+
+rules:
+  - id: log-everything
+    name: Audit every agent action
+    match: {}
+    action: log
+    reason: "Compliance audit trail"
+
+  - id: deny-rm-rf
+    name: Block destructive rm
+    match:
+      tool: Bash
+      command_glob: "rm -rf /*"
+    action: deny
+    reason: "Mass deletion"
+
+  - id: deny-secret-reads
+    name: Block reading secrets
+    match:
+      tool: Read
+      file_glob: ["*.pem", ".env*", "*id_rsa*"]
+    action: deny
+    reason: "Secret files are off-limits"
+
+  - id: ask-network
+    name: Require approval for outbound network
+    match:
+      tool: Bash
+      command_glob: ["curl *", "wget *", "http*"]
+    action: ask
+    reason: "Outbound network — needs human OK"
+
+  - id: ask-publish
+    name: Require approval for publish operations
+    match:
+      tool: Bash
+      command_glob: ["npm publish *", "twine upload *", "git push *origin*main*"]
+    action: ask
+    reason: "Production release"
+
+  - id: ask-merge
+    name: Require approval for gh merges / force-pushes
+    match:
+      tool: Bash
+      command_glob: ["gh pr merge *", "git push *--force*"]
+    action: ask
+    reason: "Branch mutation"
+
+network:
+  allowed_domains:
+    - github.com
+    - "*.githubusercontent.com"
+    - pypi.org
+    - "*.pypi.org"
+    - registry.npmjs.org
+    - "*.npmjs.org"
+    - anthropic.com
+    - "*.anthropic.com"
+  denied_domains:
+    - pastebin.com
+    - transfer.sh
+    - 0bin.net
+    - "*paste*"
+  require_https: true

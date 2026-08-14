@@ -1,0 +1,55 @@
+version: 1
+metadata:
+  author: agentgate-example
+  name: secure
+  version: 1
+  description: |
+    Strictest mode — useful for production / untrusted-code review.
+    Deny by default; explicitly allow a small whitelist.
+  last_reviewed: 2026-08-14
+
+default: deny
+
+rules:
+  - id: allow-read-only-tools
+    name: Allow read-only tools
+    match:
+      tool: [Read, Grep, Glob]
+    action: allow
+    reason: "Read-only tools are safe"
+
+  - id: allow-edits-within-repo
+    name: Allow file edits within the repo
+    match:
+      tool: [Write, Edit]
+      file_glob: "*"
+    action: allow
+    reason: "Edits inside repo"
+
+  - id: ask-bash
+    name: Require approval for any Bash command
+    match:
+      tool: Bash
+    action: ask
+    reason: "Bash is the highest-risk tool"
+
+  - id: ask-network
+    name: Require approval for network egress
+    match:
+      tool: Bash
+      command_glob: ["curl *", "wget *", "http*", "ssh *"]
+    action: ask
+    reason: "Network egress from agent"
+
+  - id: deny-secret-reads
+    name: Block reading secrets (override allow)
+    match:
+      tool: Read
+      file_glob: ["*.pem", ".env*", "*id_rsa*", "*credentials*", "*secret*"]
+    action: deny
+    reason: "Secret files are off-limits"
+
+network:
+  denied_domains:
+    - "*"
+  require_https: true
