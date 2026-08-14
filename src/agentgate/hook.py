@@ -4,17 +4,9 @@ Reads JSON from stdin (Claude Code's hook payload), maps it to our event
 schema, evaluates the policy, records the decision in the audit DB, and
 writes the JSON response Claude Code reads on stdout.
 
-Schema mapping:
-    Claude Code input            -> AgentGate event
-    -----------------------------    ---------------------------
-    tool_name                    -> tool
-    tool_input.command           -> command
-    tool_input.file_path         -> file
-    tool_input.content           -> content
-    tool_input.pattern           -> pattern (Grep/Glob)
-    tool_input.url               -> url (WebFetch)
-    session_id                   -> session_id
-    cwd                          -> cwd
+For ASK actions, notifies Slack (or a file fallback) and waits up to
+AGENTGATE_ASK_TIMEOUT seconds (default 60) for a human to approve/deny
+via the approval server (agentgate approval-server).
 """
 from __future__ import annotations
 import json
@@ -22,7 +14,9 @@ import os
 import sys
 from pathlib import Path
 
+from .approval import STORE
 from .audit import Audit
+from .notify import notify_ask
 from .policy import Action, load_policy
 
 
@@ -93,11 +87,21 @@ def main() -> int:
         )
         return 0  # fail open — let Claude proceed if misconfigured
 
-    try:
-        payload = json.load(sys.stdin)
-    except json.JSONDecodeError:
-        # Empty/invalid stdin: nothing to evaluate.
-        return 0
+    # Read payload: stdin by default, or AGENTGATE_PAYLOAD_FILE for environments
+    # where stdin is already consumed (background launches, harness tests).
+    payload_file = os.environ.get("AGENTGATE_PAYLOAD_FILE")
+    if payload_file:
+        try:
+            payload = json.loads(Path(payload_file).read_text())
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"AgentGate hook: cannot load payload file: {e}", file=sys.stderr)
+            return 0
+    else:
+        try:
+            payload = json.load(sys.stdin)
+        except json.JSONDecodeError:
+            # Empty/invalid stdin: nothing to evaluate.
+            return 0
 
     # Only handle PreToolUse; ignore other events (we shouldn't be called for them).
     if payload.get("hook_event_name") not in (None, "PreToolUse"):
@@ -114,16 +118,61 @@ def main() -> int:
         return 0
 
     action, rule = policy.evaluate(event)
-    audit.record(
-        source="claude-code",
-        agent=agent,
-        action=action,
-        event=event,
-        rule_id=rule.id if rule else None,
-        rule_name=rule.name if rule else None,
-        reason=rule.reason if rule else None,
-    )
     reason = (rule.reason if rule else "") or (rule.name if rule else "")
+
+    # ASK action: notify Slack, wait for human decision.
+    if action == Action.ASK:
+        ask = STORE.request(event, tool, rule.id if rule else None)
+        # Notify (Slack or file fallback).
+        try:
+            status = notify_ask(
+                ask.token, tool, event,
+                rule.name if rule else None, reason,
+            )
+        except Exception as exc:
+            status = f"notify-error: {exc}"
+        # Write a 'pending' row to the audit so the ask is visible there too.
+        audit.record(
+            source="claude-code",
+            agent=agent,
+            action=Action.ASK,
+            event={**event, "_ask_token": ask.token, "_notify": status},
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=reason,
+        )
+        # Wait for human. Honor AGENTGATE_ASK_TIMEOUT (default 60s).
+        timeout = float(os.environ.get("AGENTGATE_ASK_TIMEOUT", "60"))
+        decision = STORE.wait(ask.token, timeout=timeout)
+        if decision is None:
+            # Timeout: deny by default for safety.
+            decision_str = "deny"
+            timeout_note = f"AgentGate ASK timed out after {timeout:.0f}s → denied"
+        else:
+            decision_str = decision
+            timeout_note = ""
+        action = Action(decision_str)
+        # Update audit row with the resolution.
+        audit.record(
+            source="claude-code",
+            agent=agent,
+            action=action,
+            event={**event, "_ask_token": ask.token, "_resolved": decision_str},
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=(reason + " " + timeout_note).strip(),
+        )
+    else:
+        audit.record(
+            source="claude-code",
+            agent=agent,
+            action=action,
+            event=event,
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=reason or None,
+        )
+
     response = decision_to_cc_response(action, reason)
     json.dump(response, sys.stdout)
     sys.stdout.write("\n")
