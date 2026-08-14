@@ -1,85 +1,62 @@
-"""`agentgate lint` — policy sanity checks beyond syntax."""
-
+"""`agentgate lint` - check a policy.yaml for common mistakes."""
 from __future__ import annotations
+import sys
+from pathlib import Path
 
 import click
-import yaml as _yaml
 
-from ..policy import Action, load_policy
-from . import console
-from ._common import friendly_yaml_error, resolve_policy
+from .. import __version__
+from ..policy import load_policy
 
 
 @click.command()
-@click.option("--policy", "-p", required=True, type=click.Path(exists=True))
-@click.option("--strict", is_flag=True, help="Treat warnings as errors.")
-def lint(policy: str, strict: bool) -> None:
-    """Lint a policy.yaml — find duplicate IDs, missing fields, dead rules, etc."""
-    p = resolve_policy(policy)
+@click.option("--policy", "-p", required=True, type=click.Path(exists=True), help="Policy YAML to lint.")
+@click.option("--quiet", "-q", is_flag=True, help="Only show errors.")
+def lint(policy: str, quiet: bool) -> None:
+    """Check a policy YAML for duplicate IDs, empty match, missing reasons, etc.
+
+    Exit code 0 = no issues, 1 = errors found, 2 = invalid YAML / file error.
+    """
     try:
-        pol = load_policy(str(p))
-    except _yaml.YAMLError as e:
-        raise click.ClickException(friendly_yaml_error(p, e))
+        policy_obj = load_policy(policy)
+    except Exception as exc:
+        click.echo(f"error: failed to load policy: {exc}", err=True)
+        sys.exit(2)
 
-    errors: list[str] = []
-    warnings: list[str] = []
+    warnings, errors = [], []
+    seen_ids: set[str] = set()
+    for i, rule in enumerate(policy_obj.rules):
+        if rule.id in seen_ids:
+            errors.append(f"duplicate rule id: {rule.id!r}")
+        seen_ids.add(rule.id)
 
-    # 1. Duplicate rule IDs.
-    seen: dict[str, int] = {}
-    for _i, r in enumerate(pol.rules):
-        seen[r.id] = seen.get(r.id, 0) + 1
-    dupes = [rid for rid, n in seen.items() if n > 1]
-    if dupes:
-        errors.append(f"duplicate rule IDs: {dupes}")
+        if not rule.match:
+            errors.append(f"rule {rule.id!r}: empty match")
 
-    # 2. Missing 'reason' on deny rules.
-    for r in pol.rules:
-        if r.action == Action.DENY and not r.reason:
-            warnings.append(f"rule '{r.id}' has action=deny but no reason")
+        if rule.action.value == "deny" and not rule.reason:
+            errors.append(f"rule {rule.id!r}: deny action without reason")
 
-    # 3. Dead rules — no match key OR empty match.
-    for r in pol.rules:
-        if not r.match:
-            errors.append(f"rule '{r.id}' has empty match")
 
-    # 4. Bad action values.
-    for r in pol.rules:
-        if r.action not in Action:
-            errors.append(f"rule '{r.id}' has invalid action: {r.action}")
 
-    # 5. Glob/regex key without a real field.
-    for r in pol.rules:
-        for k in r.match:
-            if k.endswith("_regex") or k.endswith("_glob"):
-                # Strip suffix and check if event schema has that key.
-                base = k.removesuffix("_regex").removesuffix("_glob")
-                if not base:
-                    warnings.append(f"rule '{r.id}' match key '{k}' has no base field")
+    # Default-action validation
+    default = getattr(policy_obj, "default_action", None)
+    if default is None or default.value not in ("allow", "deny"):
+        errors.append(f"invalid default action: {default!r}")
 
-    # 6. Empty network policy in strict mode.
-    if strict and pol.network and not pol.allowed_domains and not pol.denied_domains:
-        warnings.append("strict mode: network block present but empty (denies nothing)")
-
-    # 7. No metadata in strict mode.
-    if strict and not pol.metadata:
-        warnings.append("strict mode: no metadata block (compliance audit)")
-
-    # Output
-    console.print(f"[bold]Linting[/bold] {p}")
-    console.print(
-        f"  {len(pol.rules)} rules, default={pol.default_action.value}, network={bool(pol.network)}"
-    )
-
-    if not errors and not warnings:
-        console.print("  [green]\u2713 no issues[/]")
-        return
+    if not quiet:
+        click.echo(f"Linting {policy}")
+        click.echo(f"  {len(policy_obj.rules)} rules, default={default.value if default else None!r}, network={getattr(policy_obj, 'network', False)!r}")
 
     for w in warnings:
-        console.print(f"  [yellow]\u26a0[/] {w}")
+        if not quiet:
+            click.echo(f"  warning: {w}")
     for e in errors:
-        console.print(f"  [red]\u2717[/] {e}")
+        click.echo(f"  error: {e}")
 
     if errors:
-        raise click.ClickException(f"{len(errors)} error(s) found")
-    if strict and warnings:
-        raise click.ClickException(f"strict mode: {len(warnings)} warning(s) treated as errors")
+        click.echo(f"\n{len(errors)} error(s), {len(warnings)} warning(s)", err=True)
+        sys.exit(1)
+    if warnings:
+        click.echo(f"\n{len(warnings)} warning(s)")
+    elif not quiet:
+        click.echo("\nOK - no issues")

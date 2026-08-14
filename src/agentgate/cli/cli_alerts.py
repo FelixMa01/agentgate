@@ -1,7 +1,5 @@
-"""`agentgate alerts` — evaluate alert rules against the audit DB."""
+"""`agentgate alerts` - evaluate alert rules against the audit DB."""
 from __future__ import annotations
-
-import json
 import sys
 import time
 from pathlib import Path
@@ -9,7 +7,6 @@ from pathlib import Path
 import click
 
 from ..audit import Audit
-from . import console
 
 
 @click.command()
@@ -55,8 +52,8 @@ def alerts(db: str, rules: str, once: bool, interval: int) -> None:
                        .replace("{{count}}", str(count))
                        .replace("{{window}}", str(window // 60)))
                 triggered += 1
-                console.print(f"[red]\u26a0 {rule['name']}[/red]: {msg}")
+                click.echo(f"[!] {rule['name']}: {msg}", err=True)
         if once:
             break
         time.sleep(interval)
-    console.print(f"[green]\u2713[/green] {triggered} alerts fired")
+    click.echo(f"[OK] {triggered} alerts fired")

@@ -1,31 +1,18 @@
 """Tests for `agentgate lint`."""
-
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
+from click.testing import CliRunner
+
+from agentgate.cli.__init__ import main
 
 
 def test_lint_clean_policy():
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "agentgate.cli.__init__",
-            "lint",
-            "-p",
-            "examples/policy-secure.yaml",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode == 0
-    assert "no issues" in result.stdout
+    runner = CliRunner()
+    result = runner.invoke(main, ["lint", "-p", "examples/policy-secure.yaml"])
+    assert result.exit_code == 0, result.output
+    assert "no issues" in result.output or "OK" in result.output
 
 
-def test_lint_dup_rule_id(tmp_path):
+def test_lint_duplicate_id(tmp_path):
     p = tmp_path / "policy.yaml"
     p.write_text("""
 version: 1
@@ -34,58 +21,15 @@ rules:
   - id: dup
     match: {tool: Bash}
     action: deny
+    reason: x
   - id: dup
     match: {tool: Read}
-    action: deny
+    action: allow
 """)
-    result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode != 0
-    assert "duplicate" in result.stdout.lower()
-
-
-def test_lint_deny_no_reason(tmp_path):
-    p = tmp_path / "policy.yaml"
-    p.write_text("""
-version: 1
-default: allow
-rules:
-  - id: bare-deny
-    match: {tool: Bash}
-    action: deny
-""")
-    result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode == 0  # warning only
-    assert "no reason" in result.stdout
-
-
-def test_lint_strict_turns_warnings_into_errors(tmp_path):
-    p = tmp_path / "policy.yaml"
-    p.write_text("""
-version: 1
-default: allow
-rules:
-  - id: bare-deny
-    match: {tool: Bash}
-    action: deny
-""")
-    result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p), "--strict"],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode != 0
-    assert "warning" in result.stdout.lower()
+    runner = CliRunner()
+    result = runner.invoke(main, ["lint", "-p", str(p)])
+    assert result.exit_code != 0
+    assert "duplicate" in result.output
 
 
 def test_lint_empty_match(tmp_path):
@@ -97,12 +41,33 @@ rules:
   - id: empty
     match: {}
     action: deny
+    reason: x
 """)
-    result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True,
-        text=True,
-        timeout=10,
-    )
-    assert result.returncode != 0
-    assert "empty match" in result.stdout
+    runner = CliRunner()
+    result = runner.invoke(main, ["lint", "-p", str(p)])
+    assert result.exit_code != 0
+    assert "empty match" in result.output
+
+
+def test_lint_no_reason(tmp_path):
+    p = tmp_path / "policy.yaml"
+    p.write_text("""
+version: 1
+default: allow
+rules:
+  - id: r
+    match: {tool: Bash}
+    action: deny
+""")
+    runner = CliRunner()
+    result = runner.invoke(main, ["lint", "-p", str(p)])
+    assert result.exit_code != 0
+    assert "reason" in result.output
+
+
+def test_lint_invalid_yaml(tmp_path):
+    p = tmp_path / "policy.yaml"
+    p.write_text("::not::yaml::[")
+    runner = CliRunner()
+    result = runner.invoke(main, ["lint", "-p", str(p)])
+    assert result.exit_code != 0

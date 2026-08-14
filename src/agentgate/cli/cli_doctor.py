@@ -1,121 +1,83 @@
-"""`agentgate doctor` — check that the install can actually run."""
-
+"""`agentgate doctor` - check Python version, deps, optional tools."""
 from __future__ import annotations
-
-import os
 import shutil
-import socket
 import sys
 from pathlib import Path
 
 import click
 
 from .. import __version__
-from ..policy import load_policy
-from . import console
 
 
 @click.command()
-@click.option(
-    "--policy", "-p", default=None, help="Optional policy.yaml to validate as part of the check."
-)
-def doctor(policy: str | None) -> None:
-    """Check Python version, deps, optional tools, and policy health.
+@click.option("--quiet", "-q", is_flag=True, help="Suppress OK messages.")
+def doctor(quiet: bool) -> None:
+    """Diagnose your AgentGate installation.
 
-    Useful as the first thing a new user runs after install.
+    Checks Python version, dependencies, optional tools (mitmdump, git),
+    Slack/Telegram config, and AgentGate database state.
     """
-    console.print(f"[bold]AgentGate v{__version__} — doctor[/bold]")
-    console.print()
+    click.echo(f"AgentGate v{__version__} - doctor")
+    click.echo()
 
     # Python version
-    v = sys.version_info
-    py_ok = v >= (3, 12)
-    console.print(
-        f"  python     {sys.version.split()[0]}  "
-        + ("[green]\u2713[/]" if py_ok else "[red]\u2717 need 3.12+[/]")
-    )
+    py = sys.version_info
+    py_ok = py >= (3, 12)
+    _print_check("python", f"{py.major}.{py.minor}.{py.micro}", py_ok, quiet)
 
     # Core dependencies
-    for mod, label in [("click", "click"), ("yaml", "pyyaml"), ("rich", "rich")]:
+    for dep in ("click", "pyyaml", "rich", "mitmproxy"):
         try:
-            __import__(mod)
-            console.print(f"  {label:11s} [green]\u2713[/]")
+            __import__(dep)
+            _print_check(dep, None, True, quiet)
         except ImportError:
-            console.print(f"  {label:11s} [red]\u2717 missing — run `uv sync`[/]")
+            _print_check(dep, None, False, quiet)
 
-    # Optional: mitmproxy for `agentgate proxy`
-    try:
-        import mitmproxy
-
-        console.print("  mitmproxy   [green]\u2713[/]")
-    except ImportError:
-        console.print("  mitmproxy   [yellow]\u00b7 missing — `agentgate proxy` won't work[/]")
-
-    # Shell tools
-    for tool in ("git", "mitmdump"):
+    # Optional tools
+    for tool in ("git", "mitmdump", "docker"):
         path = shutil.which(tool)
-        if path:
-            console.print(f"  {tool:11s} {path}  [green]\u2713[/]")
-        else:
-            console.print(f"  {tool:11s} [yellow]\u00b7 not on PATH[/]")
+        _print_check(tool, path or "not on PATH", path is not None, quiet)
 
-    # Slack/Telegram notification config
-    if os.environ.get("AGENTGATE_SLACK_WEBHOOK"):
-        console.print("  slack       [green]\u2713 webhook configured[/]")
+    # AgentGate state
+    click.echo()
+    click.echo("AgentGate config:")
+    home = Path.home()
+    audit_default = home / ".agentgate" / "audit.db"
+    if audit_default.exists():
+        size_kb = audit_default.stat().st_size / 1024
+        _print_check("audit db", f"{audit_default} ({size_kb:.1f} KB)", True, quiet)
     else:
-        console.print("  slack       [dim]\u00b7 no webhook (will fall back to file)[/]")
-    if os.environ.get("AGENTGATE_TELEGRAM_BOT_TOKEN") and os.environ.get(
-        "AGENTGATE_TELEGRAM_CHAT_ID"
-    ):
-        console.print("  telegram    [green]\u2713 bot + chat configured[/]")
+        _print_check("audit db", f"{audit_default} (not created yet)", True, quiet)
+
+    # Hook installation
+    claude_settings = home / ".claude" / "settings.json"
+    if claude_settings.exists():
+        _print_check("claude hook", f"{claude_settings}", True, quiet)
     else:
-        console.print("  telegram    [dim]\u00b7 no bot (will fall back to slack/file)[/]")
+        click.echo(f"  claude hook: not installed (run `agentgate install-hook`)")
 
-    # Hosted
-    if os.environ.get("AGENTGATE_HOSTED_URL"):
-        console.print(
-            "  hosted      [green]\u2713 {}[/]".format(os.environ["AGENTGATE_HOSTED_URL"])
-        )
+    # Notification config
+    slack_url = None
+    for env_name in ("SLACK_WEBHOOK_URL", "AGENTGATE_SLACK_WEBHOOK"):
+        import os
+        if os.environ.get(env_name):
+            slack_url = os.environ[env_name]
+            break
+    if slack_url:
+        _print_check("slack", "configured (env var)", True, quiet)
     else:
-        console.print("  hosted      [dim]\u00b7 not configured (standalone mode)[/]")
+        click.echo("  slack: not configured (set SLACK_WEBHOOK_URL)")
 
-    # Port availability
-    for label, port in [("dashboard", 8766), ("approval", 8765), ("proxy", 8080)]:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            free = s.connect_ex(("127.0.0.1", port)) != 0
-        icon = "[green]\u2713 free[/]" if free else "[yellow]\u00b7 busy[/]"
-        console.print(f"  port {port:5d}  ({label})  {icon}")
+    click.echo()
+    click.echo("Done. Run `agentgate --help` to see available commands.")
 
-    # Policy validation
-    if policy:
-        try:
-            pol = load_policy(policy)
-            console.print(
-                f"  policy      [green]\u2713 {len(pol.rules)} rules, "
-                f"default={pol.default_action.value}[/]"
-            )
-            if pol.network:
-                if pol.allowed_domains:
-                    console.print(
-                        f"               [dim]{len(pol.allowed_domains)} allowed domains[/]"
-                    )
-                if pol.denied_domains:
-                    console.print(
-                        f"               [dim]{len(pol.denied_domains)} denied domains[/]"
-                    )
-            if not pol.metadata:
-                console.print(
-                    "               [yellow]\u00b7 no metadata block "
-                    "(consider adding author + last_reviewed)[/]"
-                )
-        except Exception as e:
-            console.print(f"  policy      [red]\u2717 invalid: {e}[/]")
-    else:
-        console.print("  policy      [dim]\u00b7 not checked (pass --policy to validate)[/]")
 
-    console.print()
-    console.print(
-        "[green]All checks passed.[/]"
-        if py_ok
-        else "[red]Fix the \u2717 items above and re-run `agentgate doctor`.[/]"
-    )
+def _print_check(name: str, detail: str | None, ok: bool, quiet: bool) -> None:
+    status = "OK" if ok else "FAIL"
+    msg = f"  {name}: {status}"
+    if detail:
+        msg += f" ({detail})"
+    if not ok:
+        click.echo(msg, err=True)
+    elif not quiet:
+        click.echo(msg)
