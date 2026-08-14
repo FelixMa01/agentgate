@@ -10,3 +10,17 @@ wheels/
 .venv
 demo/
 /tmp/agentgate-verify-policy.yaml
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# AgentGate runtime artifacts
+/tmp/agentgate-asks.jsonl
+/tmp/agentgate-verify-policy.yaml
+
+# Editor
+.vscode/
+.idea/
+*.swp
