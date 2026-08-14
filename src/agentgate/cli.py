@@ -396,6 +396,17 @@ def ask_test(policy: str, db: str, event_json: str, approve_after: float) -> Non
                  reason="ask-test resolution")
 
 
+@main.command()
+@click.option("--db", required=True, type=click.Path())
+@click.option("--host", default="127.0.0.1")
+@click.option("--port", default=8766, type=int)
+def dashboard(db: str, host: str, port: int) -> None:
+    """Start the AgentGate audit dashboard HTTP server."""
+    from .dashboard import serve
+    console.print(f"[cyan]→[/] AgentGate dashboard on http://{host}:{port}")
+    serve(db, host, port)
+
+
 # Alias to avoid keyword conflict
 audit_cmd.name = "audit"
 
