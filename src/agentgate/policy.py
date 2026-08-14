@@ -87,8 +87,21 @@ class Rule:
                     actual = self._dig(event, base)
             if actual is None:
                 return False
-            if not self._match_pattern(actual, pattern):
-                return False
+            # Pick match mode by key suffix: '*_regex' -> re.search, '*_glob' -> fnmatch,
+            # otherwise plain equality.
+            if key.endswith("_regex"):
+                try:
+                    if not re.search(str(pattern), str(actual)):
+                        return False
+                except re.error:
+                    return False
+            elif key.endswith("_glob"):
+                regex = fnmatch.translate(str(pattern))
+                if re.fullmatch(regex, str(actual)) is None:
+                    return False
+            else:
+                if not self._match_pattern(actual, pattern):
+                    return False
         return True
 
     @staticmethod
@@ -177,10 +190,10 @@ class Policy:
     def evaluate(self, event: dict) -> tuple[Action, Rule | None]:
         """Evaluate event, returning the EFFECTIVE action (after applying mode).
 
-        For audit logging where you need both raw and effective, use
-        evaluate_with_meta instead.
+        Fails closed (ASK) when critical fields are missing. For audit
+        logging where you need both raw and effective, use evaluate_with_meta.
         """
-        raw, rule = self._evaluate_raw(event)
+        raw, rule = self.validate_event(event)
         return self.effective_action(raw), rule
 
     def _evaluate_raw(self, event: dict) -> tuple[Action, Rule | None]:
@@ -193,6 +206,56 @@ class Policy:
         if tool_name and not self.is_known_tool(tool_name) and self.unknown_tool_action is not None:
             return self.unknown_tool_action, None
         return self.default_action, None
+
+    def missing_fields(self, event: dict) -> list[str]:
+        """Return names of critical fields that are missing or None for this event.
+
+        Each tool has its own required fields. Used by hooks to fail-closed
+        (ASK) when an agent submits an incomplete event payload.
+        """
+        tool = (event.get("tool") or "").lower()
+        requirements: dict[str, list[str]] = {
+            "bash": ["command"],
+            "exec": ["command"],
+            "shell": ["command"],
+            "read": ["file"],
+            "write": ["file", "content"],
+            "edit": ["file", "content"],
+            "glob": ["pattern"],
+            "grep": ["pattern"],
+            "webfetch": ["url"],
+            "curl": ["url"],
+        }
+        required = requirements.get(tool, [])
+        missing: list[str] = []
+        for required_field in required:
+            val = event.get(required_field)
+            if val is None or (isinstance(val, str) and not val.strip()):
+                missing.append(required_field)
+        return missing
+
+    def validate_event(self, event: dict) -> tuple[Action, Rule | None]:
+        """Evaluate event with fail-closed validation.
+
+        If a critical field for the event's tool is missing or None (e.g.
+        Bash with no command), returns ASK with a synthetic rule explaining
+        what's wrong — better to ask than to silently allow an ambiguous
+        tool call.
+
+        Otherwise falls through to _evaluate_raw.
+        """
+        missing = self.missing_fields(event)
+        if missing:
+            tool_name = event.get("tool") or "?"
+            synth_rule = Rule(
+                id=f"missing-{tool_name}",
+                name=f"Missing required field: {', '.join(missing)}",
+                match={"tool": tool_name},
+                action=Action.ASK,
+                reason=f"agent submitted incomplete event (missing {', '.join(missing)})",
+            )
+            return Action.ASK, synth_rule
+        return self._evaluate_raw(event)
 
     def evaluate_with_meta(self, event: dict) -> dict:
         """Return both raw and effective decisions plus rule metadata.
@@ -285,7 +348,7 @@ def load_policy(path: str | Path) -> Policy:
         rules.append(Rule(**r2))
     return Policy(
         version=int(raw.get("version", 1)),
-        default_action=Action(raw.get("default", "allow")),
+        default_action=Action(raw.get("default_action", raw.get("default", "allow"))),
         rules=rules,
         network=raw.get("network", {}) or {},
         metadata=raw.get("metadata", {}) or {},

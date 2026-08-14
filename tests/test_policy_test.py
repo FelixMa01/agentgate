@@ -6,6 +6,7 @@ from click.testing import CliRunner
 
 from agentgate import policy as policy_mod
 from agentgate.cli.__init__ import main
+from agentgate.policy import Action
 
 EXAMPLE = "examples/policy-secure.yaml"
 
@@ -175,3 +176,66 @@ def test_event_provenance_binds_rule_id():
     assert p1["rule_id"] == "ask-bash"
     assert p2["rule_id"] == "deny-bash"
     assert p1["event_sha256"] == p2["event_sha256"]  # hash is event-only
+
+def test_missing_fields_bash_no_command():
+    """Bash tool with no command field should fail-closed (ASK)."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "Bash"}  # no command
+    action, _rule = p.evaluate(event)
+    assert action == Action.ASK
+    assert "command" in (_rule.reason or "")
+    assert "missing" in (_rule.reason or "").lower()
+
+
+def test_missing_fields_read_no_file():
+    """Read tool with no file field should ASK."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "Read"}  # no file
+    action, _rule = p.evaluate(event)
+    assert action == Action.ASK
+
+
+def test_missing_fields_webfetch_no_url():
+    """WebFetch tool with no url field should ASK."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "WebFetch"}
+    action, _rule = p.evaluate(event)
+    assert action == Action.ASK
+
+
+def test_missing_fields_present_does_not_ask():
+    """If critical fields are present, normal evaluation applies."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "Bash", "command": "echo hello"}
+    action, _ = p.evaluate(event)
+    # ask-bash rule should match — so action stays ASK, not because of missing.
+    assert action == Action.ASK
+
+
+def test_missing_fields_blank_string_treated_as_missing():
+    """Blank/empty string is treated as missing for fail-closed."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "Bash", "command": "   "}
+    action, _rule = p.evaluate(event)
+    assert action == Action.ASK
+    assert "command" in (_rule.reason or "")
+
+
+def test_missing_fields_unknown_tool_not_flagged():
+    """Unknown tools with no required fields don't trigger the validator."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "NewUnknownTool"}  # not in requirements map
+    action, _rule = p.evaluate(event)
+    # Will hit default_action (deny) or unknown_tool_action — but not a
+    # synthetic missing-fields rule.
+    assert action in (Action.DENY, Action.ASK)
+
+
+def test_validate_event_explicit_method():
+    """validate_event() returns synthetic rule with helpful message."""
+    p = policy_mod.load_policy(EXAMPLE)
+    event = {"tool": "Bash", "command": None}
+    action, rule = p.validate_event(event)
+    assert action == Action.ASK
+    assert rule.id.startswith("missing-")
+    assert "command" in rule.reason

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-14
+
+### Added
+- `agentgate init` — interactive wizard generating a starter policy.yaml (3 presets: readonly/balanced/strict)
+- MCP stdio server (`agentgate mcp`) — JSON-RPC 2.0 with `policy_lookup`, `audit_recent`, `audit_count`, `policy_test_tool`
+- Ask queue dashboard (`/asks` + `/api/asks/pending` + `/api/asks/resolve`) — UI to approve/deny pending ASK events
+- Webhook subscriptions (`agentgate webhook add/list/remove/test`) — fire external URLs on filtered audit events with retry/backoff
+- `agentgate policy diff <a.yaml> <b.yaml>` — compare two policies: rule-level diff + decision-change detection across canary events
+- Fail-closed on missing critical event fields (`Bash.command`, `Read.file`, `WebFetch.url`) — ASK synthetic rule with explicit reason
+
+### Fixed
+- Rule.matches() now dispatches `*_regex` keys to `re.search` and `*_glob` keys to `fnmatch.fnmatch` (previously used fnmatch for all keys, causing `command_regex` rules to silently never match)
+- `load_policy()` now reads `default_action` from YAML (was reading nonexistent `default` key, silently always defaulting to allow)
+- Dashboard SSE handler rewritten to drop timing-fragile `time.sleep(0.5)` schema-check loop and unskip the SSE integration test
+
+### Tests
+171/171 passing (+58 since v0.9.0): +init (9), +rule_matches regression (5), +mcp_server (10), +ask_queue (8), +webhooks (11), +policy_diff (8), +missing-fields (7)
+
 ## [0.9.0] - 2026-08-14
 
 ### Added

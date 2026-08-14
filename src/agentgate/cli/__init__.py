@@ -28,20 +28,23 @@ from .cli_audit import cli_audit
 from .cli_audit_verify import audit_verify
 from .cli_dashboard import dashboard
 from .cli_detect_agents import detect_agents
+from .cli_diff import diff_cmd
 from .cli_docs import docs
 from .cli_doctor import doctor
 from .cli_eval import eval
 from .cli_hosted import pull_policy, push_events
-from .cli_init import init
+from .cli_init import init_cmd as init
 from .cli_install_continue_hook import install_continue_hook
 from .cli_install_cursor_hook import install_cursor_hook
 from .cli_install_hook import install_hook, uninstall_hook
 from .cli_lint import lint
+from .cli_mcp import mcp_cmd as mcp
 from .cli_proxy import proxy
 from .cli_replay import replay
 from .cli_stats import stats
 from .cli_test_policy import policy_group
 from .cli_validate import validate
+from .cli_webhook import webhook
 
 for _cmd in (
     init,
@@ -64,6 +67,9 @@ for _cmd in (
     replay,
     doctor,
     lint,
+    mcp,
+    webhook,
+    diff_cmd,
     docs,
     policy_group,
 ):

@@ -26,6 +26,66 @@ from urllib.parse import urlparse
 from . import __version__
 from .audit import Audit
 
+ASKS_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentGate — Ask Queue</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d1117; --fg:#c9d1d9; --card:#161b22; --border:#30363d; --ok:#3fb950; --err:#f85149; }
+  body { background:var(--bg); color:var(--fg); font-family:-apple-system,system-ui,sans-serif; padding:24px; margin:0; }
+  h1 { margin:0 0 16px; }
+  nav a { color:#58a6ff; text-decoration:none; margin-right:16px; }
+  .empty { color:#8b949e; padding:40px; text-align:center; }
+  .ask { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:14px 18px; margin:12px 0; }
+  .meta { color:#8b949e; font-size:13px; margin-bottom:8px; }
+  pre { background:#0d1117; padding:8px 10px; border-radius:4px; overflow:auto; margin:6px 0; font-size:13px; }
+  .actions { margin-top:10px; display:flex; gap:8px; }
+  .btn { background:#21262d; color:var(--fg); border:1px solid var(--border); padding:6px 14px; border-radius:4px; cursor:pointer; font-size:14px; }
+  .btn.allow { border-color:var(--ok); color:var(--ok); }
+  .btn.deny { border-color:var(--err); color:var(--err); }
+  .btn:hover { background:#30363d; }
+</style>
+</head>
+<body>
+<h1>Ask Queue</h1>
+<nav><a href="/">Dashboard</a><a href="/asks">Ask Queue</a></nav>
+<div id="queue"><div class="empty">Loading...</div></div>
+<script>
+async function refresh() {
+  const r = await fetch("/api/asks/pending?limit=50");
+  const items = await r.json();
+  const root = document.getElementById("queue");
+  if (!items.length) { root.innerHTML = "<div class=\"empty\">No pending asks.</div>"; return; }
+  root.innerHTML = "";
+  for (const e of items) {
+    const div = document.createElement("div");
+    div.className = "ask";
+    const evJson = JSON.stringify(e.event, null, 2).replace(/</g, "&lt;");
+    div.innerHTML = "<div class=\"meta\">#" + e.id + " - " + e.source + " - " + new Date(e.ts*1000).toLocaleString() + " - " + (e.rule_id||"") + "</div><pre>" + evJson + "</pre><div class=\"actions\"><button class=\"btn allow\" data-id=\"" + e.id + "\" data-decision=\"allow\">Allow</button><button class=\"btn deny\" data-id=\"" + e.id + "\" data-decision=\"deny\">Deny</button></div>";
+    root.appendChild(div);
+  }
+  for (const btn of root.querySelectorAll(".btn")) {
+    btn.onclick = async () => {
+      const id = parseInt(btn.dataset.id);
+      const decision = btn.dataset.decision;
+      const r = await fetch("/api/asks/resolve", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({id, decision}),
+      });
+      if (r.ok) refresh();
+      else alert("Failed: " + (await r.text()));
+    };
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
+"""
+
 INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset=utf-8>
 <title>AgentGate v__VER__ Dashboard</title>
@@ -314,6 +374,10 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             body = INDEX_HTML.encode()
             self._send(200, "text/html; charset=utf-8", body)
             return
+        if parsed.path == "/asks":
+            body = ASKS_HTML.encode()
+            self._send(200, "text/html; charset=utf-8", body)
+            return
         if parsed.path == "/api/stats":
             self._send(200, "application/json", json.dumps(self._stats()).encode())
             return
@@ -335,6 +399,59 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/stats/timeseries":
             self._api_stats_timeseries(parsed)
             return
+        if parsed.path == "/api/asks/pending":
+            self._api_asks_pending(parsed)
+            return
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/asks/resolve":
+            self._api_asks_resolve()
+            return
+        self._send(404, "text/plain", b"not found\n")
+
+    def _api_asks_pending(self, parsed) -> None:
+        """GET /api/asks/pending?limit=50 — list unresolved ASK events."""
+        from urllib.parse import parse_qs
+
+        from .audit import Audit
+        qs = parse_qs(parsed.query)
+        limit = int(qs.get("limit", ["50"])[0])
+        try:
+            events = Audit(self.db_path).pending_asks(limit=limit)
+        except Exception as exc:
+            self._send(500, "application/json", json.dumps({"error": str(exc)}).encode())
+            return
+        # Decode event_json for the UI.
+        for ev in events:
+            try:
+                ev["event"] = json.loads(ev.pop("event_json") or "{}")
+            except Exception:
+                ev["event"] = {}
+            ev["ts"] = int(ev.get("ts") or 0)
+        self._send(200, "application/json", json.dumps(events).encode())
+
+    def _api_asks_resolve(self) -> None:
+        """POST /api/asks/resolve {"id": 42, "decision": "allow"|"deny"}."""
+        from .audit import Audit
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError as exc:
+            self._send(400, "application/json", json.dumps({"error": str(exc)}).encode())
+            return
+        event_id = body.get("id")
+        decision = body.get("decision")
+        if not isinstance(event_id, int) or decision not in ("allow", "deny"):
+            self._send(400, "application/json",
+                       json.dumps({"error": "expected {id: int, decision: allow|deny}"}).encode())
+            return
+        ok = Audit(self.db_path).resolve(event_id, decision)
+        if not ok:
+            self._send(404, "application/json",
+                       json.dumps({"error": "not found or already resolved"}).encode())
+            return
+        self._send(200, "application/json", json.dumps({"ok": True}).encode())
     def _api_stats_timeseries(self, parsed):
         """Return event counts bucketed by hour for the last N hours."""
         from urllib.parse import parse_qs
@@ -412,14 +529,15 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
     def _sse_stream(self):
         """Server-Sent Events — push new audit rows in real time.
 
-        Polls the DB every 1s for new events (id > last_seen_id). Yields an
-        SSE `event: audit` payload per new row.
+        Polls the DB every 200ms for new events (id > last_seen_id). Yields an
+        SSE `event: audit` payload per new row. Sends a heartbeat every 5s.
+        Schema is created eagerly by `serve()` so we don't have to guard for
+        "table missing" here.
         """
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Connection", "keep-alive")
-        self.send_header("X-Accel-Buffering", "no")  # nginx hint
         self.end_headers()
         last_id = 0
         try:
@@ -428,20 +546,12 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                 last_id = int(cur.fetchone()[0])
         except Exception:
             pass
-        # Send an initial heartbeat so the client knows we're connected.
-        self.wfile.write(b": connected\n\n")
-        self.wfile.flush()
+        self._sse_send(b": connected\n\n")
+        last_ping = time.monotonic()
         while True:
             try:
                 with self._connect() as conn:
                     conn.row_factory = sqlite3.Row
-                    # Make sure the table exists (no-op if it does).
-                    try:
-                        conn.execute("SELECT 1 FROM events LIMIT 1")
-                    except Exception:
-                        # Schema missing — wait for Audit to create it.
-                        time.sleep(0.5)
-                        continue
                     cur = conn.execute(
                         "SELECT id, ts, source, agent, action, rule_id, "
                         "rule_name, reason, event_json FROM events "
@@ -449,47 +559,40 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                         (last_id,),
                     )
                     rows = cur.fetchall()
-                for row in rows:
-                    payload = {
-                        "id": row["id"],
-                        "ts": row["ts"],
-                        "source": row["source"],
-                        "agent": row["agent"],
-                        "action": str(row["action"]),
-                        "rule_id": row["rule_id"],
-                        "rule_name": row["rule_name"],
-                        "reason": row["reason"],
-                        "event": json.loads(row["event_json"]) if row["event_json"] else {},
-                    }
-                    msg = b"event: audit\ndata: " + json.dumps(payload).encode() + b"\n\n"
-                    # Write as one chunk + flush the underlying socket, so the
-                    # entire SSE message arrives in a single TCP segment.
-                    self.wfile.write(msg)
-                    try:
-                        self.wfile.flush()
-                    except Exception:
-                        pass
-                    try:
-                        # Force the OS to send immediately (bypass Nagle).
-                        sock = self.connection
-                        sock.setsockopt(__import__("socket").IPPROTO_TCP,
-                                        __import__("socket").TCP_NODELAY, 1)
-                    except Exception:
-                        pass
-                    last_id = max(last_id, row["id"])
-                # Heartbeat to keep connection alive through proxies.
-                self.wfile.write(b": ping\n\n")
-                try:
-                    self.wfile.flush()
-                except Exception:
-                    pass
+                if rows:
+                    for row in rows:
+                        payload = {
+                            "id": row["id"],
+                            "ts": row["ts"],
+                            "source": row["source"],
+                            "agent": row["agent"],
+                            "action": str(row["action"]),
+                            "rule_id": row["rule_id"],
+                            "rule_name": row["rule_name"],
+                            "reason": row["reason"],
+                            "event": json.loads(row["event_json"]) if row["event_json"] else {},
+                        }
+                        msg = b"event: audit\ndata: " + json.dumps(payload).encode() + b"\n\n"
+                        self._sse_send(msg)
+                        last_id = max(last_id, row["id"])
+                    # Don't sleep after we just sent events — keep streaming.
+                    continue
+                if time.monotonic() - last_ping > 5:
+                    self._sse_send(b": ping\n\n")
+                    last_ping = time.monotonic()
+                time.sleep(0.2)
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception:
-                # Stay quiet — better to drop the connection than spam logs.
                 return
-            time.sleep(1)
 
+    def _sse_send(self, msg: bytes) -> None:
+        """Write + flush one SSE message, tolerating client disconnect."""
+        try:
+            self.wfile.write(msg)
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            raise
     def _send(self, code: int, ctype: str, body: bytes) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)

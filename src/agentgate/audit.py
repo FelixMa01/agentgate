@@ -23,7 +23,10 @@ CREATE TABLE IF NOT EXISTS events (
     event_json TEXT NOT NULL,     -- raw event payload
     reason TEXT,
     chain_hash TEXT,              -- SHA-256 of (prev_chain_hash + this row) — tamper-evident chain
-    prev_chain_hash TEXT          -- previous event's chain_hash (NULL for first row)
+    prev_chain_hash TEXT,         -- previous event's chain_hash (NULL for first row)
+    resolved INTEGER DEFAULT 0,   -- 0=pending ask, 1=approved, 2=denied
+    resolved_by TEXT,             -- who/what approved/denied
+    resolved_at REAL              -- unix timestamp of resolution
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_action ON events(action);
@@ -123,6 +126,44 @@ class Audit:
                 "first_broken_id": first_broken,
                 "total_rows": len(rows),
             }
+
+    def pending_asks(self, limit: int = 50) -> list[dict]:
+        """Return pending ASK events that have not been resolved."""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "SELECT * FROM events WHERE action = ? AND resolved = 0 "
+                "ORDER BY id DESC LIMIT ?",
+                (Action.ASK.value, limit),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+    def resolve(self, event_id: int, decision: str, resolved_by: str = "user") -> bool:
+        """Mark an ASK event as resolved. decision: 'allow' | 'deny'.
+
+        Returns True if a row was updated, False if not found / already resolved.
+        """
+        resolved = 1 if decision == "allow" else 2
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE events SET resolved = ?, resolved_by = ?, resolved_at = ? "
+                "WHERE id = ? AND resolved = 0",
+                (resolved, resolved_by, time.time(), event_id),
+            )
+            return cur.rowcount > 0
+
+    def counts_by_action(self, action: Action | None = None) -> dict[str, int]:
+        """Return {action_name: count}. If action given, returns {"count": N}."""
+        with self._connect() as conn:
+            if action is not None:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM events WHERE action = ?",
+                    (action.value,),
+                ).fetchone()
+                return {"count": row[0]}
+            rows = conn.execute(
+                "SELECT action, COUNT(*) FROM events GROUP BY action"
+            ).fetchall()
+        return {r[0]: r[1] for r in rows}
 
     def recent(self, limit: int = 50, action: Action | None = None) -> list[dict]:
         sql = "SELECT * FROM events"

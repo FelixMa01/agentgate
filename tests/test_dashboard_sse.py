@@ -1,5 +1,4 @@
 """Tests for the dashboard SSE endpoint."""
-
 import json
 import socket
 import threading
@@ -20,45 +19,63 @@ def _free_port() -> int:
     return port
 
 
-@pytest.mark.skip(reason="SSE end-to-end test is flaky in CI timing; "
-                          "manual smoke test works (see scripts/verify.sh). "
-                          "Skip until SSE handler is rewritten with file-watch.")
 def test_sse_stream_yields_new_events(tmp_path):
-    """End-to-end: start server, record events, ensure SSE pushes them."""
+    """End-to-end: start server, record events, ensure SSE pushes them.
+
+    Uses a raw socket (instead of HTTPConnection) so we can read byte by
+    byte until the full SSE message terminator (\n\n) arrives. The
+    server polls at 200ms so a single new row is pushed within ~1s.
+    """
     db = tmp_path / "audit.db"
     port = _free_port()
     t = threading.Thread(target=serve, args=(str(db), "127.0.0.1", port), daemon=True)
     t.start()
     time.sleep(0.5)
 
-    # Open an SSE connection in a background thread.
     chunks: list[str] = []
-    done = threading.Event()
+    reader_error: list[str] = []
+    reader_done = threading.Event()
 
     def reader():
-        conn = HTTPConnection("127.0.0.1", port, timeout=10)
-        conn.request("GET", "/api/events/stream")
-        resp = conn.getresponse()
-        assert resp.status == 200
-        assert "text/event-stream" in resp.getheader("Content-Type", "")
-        # Read until we see at least one 'event: audit' line, with a timeout.
-        buf = b""
-        deadline = time.time() + 5
-        while time.time() < deadline and not done.is_set():
-            chunk = resp.read(256)
-            if not chunk:
-                break
-            buf += chunk
-            if b"event: audit" in buf:
-                break
-        chunks.append(buf.decode("utf-8", errors="replace"))
-        conn.close()
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(10)
+            sock.connect(("127.0.0.1", port))
+            sock.sendall(b"GET /api/events/stream HTTP/1.1\r\n"
+                          b"Host: localhost\r\n"
+                          b"Connection: keep-alive\r\n\r\n")
+            # Read until we've consumed the response headers.
+            buf = b""
+            while b"\r\n\r\n" not in buf:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    return
+                buf += chunk
+            # Then read until we see at least one full SSE message
+            # (terminated by \n\n after 'event: audit').
+            deadline = time.time() + 10
+            saw_event = False
+            while time.time() < deadline:
+                try:
+                    chunk = sock.recv(4096)
+                except TimeoutError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                if b"event: audit" in buf:
+                    saw_event = True
+                if saw_event and b"\n\n" in buf.split(b"event: audit", 1)[1]:
+                    break
+            chunks.append(buf.decode("utf-8", errors="replace"))
+            sock.close()
+        except Exception as e:
+            reader_error.append(repr(e))
 
     rt = threading.Thread(target=reader, daemon=True)
     rt.start()
     time.sleep(1)  # let SSE initialize last_id
 
-    # Now write a new event into the same DB.
     from agentgate.audit import Audit
     from agentgate.policy import Action
 
@@ -72,16 +89,24 @@ def test_sse_stream_yields_new_events(tmp_path):
         rule_name="Block destructive rm",
         reason="sse test",
     )
-    rt.join(timeout=6)
-    done.set()
+    rt.join(timeout=12)
+    reader_done.set()
 
-    assert len(chunks) == 1
+    if reader_error:
+        pytest.fail(f"reader thread error: {reader_error[0]}")
+    assert chunks, "reader thread produced no chunks"
     body = chunks[0]
-    # Should contain at least one 'event: audit' line.
-    assert "event: audit" in body
-    # And the data should be valid JSON.
+    # Strip the HTTP headers.
+    if "\r\n\r\n" in body:
+        body = body.split("\r\n\r\n", 1)[1]
+    assert "event: audit" in body, f"no 'event: audit' in body: {body!r}"
+    # Find the data: line and parse it as JSON.
+    data_line = None
     for line in body.splitlines():
         if line.startswith("data: "):
-            payload = json.loads(line[len("data: ") :])
-            assert payload["action"] in {"deny", "Action.DENY", "DENY"}
-            assert payload["rule_id"] == "deny-rm"
+            data_line = line[len("data: "):]
+            break
+    assert data_line is not None, f"no data: line in body: {body!r}"
+    payload = json.loads(data_line)
+    assert payload["rule_id"] == "deny-rm"
+    assert payload["action"] == "deny"
