@@ -88,6 +88,18 @@ class Audit:
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
+    def since(self, after_id: int = 0, limit: int = 500) -> list[dict]:
+        """Return events with id > after_id, ordered ascending."""
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT id, ts, source, agent, action, rule_id, "
+                "rule_name, event_json, reason FROM events "
+                "WHERE id > ? ORDER BY id ASC LIMIT ?",
+                (after_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def stats(self) -> dict:
         with self._connect() as conn:
             rows = conn.execute(

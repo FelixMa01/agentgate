@@ -27,6 +27,7 @@ from .cli_stats import stats  # noqa: E402
 from .cli_validate import validate  # noqa: E402
 from .cli_install_hook import install_hook, uninstall_hook  # noqa: E402
 from .cli_install_cursor_hook import install_cursor_hook
+from .cli_hosted import pull_policy, push_events  # noqa: E402
 from .cli_install_continue_hook import install_continue_hook  # noqa: E402  # noqa: E402
 from .cli_proxy import proxy  # noqa: E402
 from .cli_approval_server import approval_server  # noqa: E402
@@ -36,7 +37,7 @@ from .cli_replay import replay  # noqa: E402
 
 for _cmd in (
     init, eval, audit, stats, validate, install_hook, uninstall_hook,
-    install_cursor_hook, install_continue_hook, proxy, approval_server, ask_test, dashboard, replay,
+    install_cursor_hook, install_continue_hook, pull_policy, push_events, proxy, approval_server, ask_test, dashboard, replay,
 ):
     main.add_command(_cmd)
 

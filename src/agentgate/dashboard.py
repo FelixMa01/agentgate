@@ -204,6 +204,39 @@ function escapeHtml(s){{
   return String(s||'').replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
 }}
 fetchAll(); setInterval(fetchAll, 5000);
+
+// Live SSE stream — push new events without polling
+if (typeof EventSource !== 'undefined') {
+  const es = new EventSource('/api/events/stream');
+  es.addEventListener('audit', e => {
+    try {
+      const evt = JSON.parse(e.data);
+      notify(evt.action, evt.rule_id, evt.reason);
+      flash(evt.action);
+      fetchAll();  // re-pull stats + tables
+    } catch (err) { console.error(err); }
+  });
+  es.onerror = () => console.warn('SSE connection lost, will reconnect');
+}
+function flash(action) {
+  // brief border flash on body for visual cue
+  const color = action === 'DENY' ? 'var(--red)'
+    : action === 'ASK' ? 'var(--yellow)'
+    : action === 'ALLOW' ? 'var(--green)' : 'var(--blue)';
+  document.body.style.boxShadow = 'inset 0 0 0 3px ' + color;
+  setTimeout(() => document.body.style.boxShadow = '', 600);
+}
+function notify(action, rule_id, reason) {
+  if (action === 'DENY' && 'Notification' in window) {
+    if (Notification.permission === 'granted') {
+      new Notification('AgentGate: DENY', {
+        body: (rule_id || '') + ' — ' + (reason || ''),
+      });
+    } else if (Notification.permission !== 'denied') {
+      Notification.requestPermission();
+    }
+  }
+}
 </script>
 </body></html>
 """.replace("__VER__", __version__)
@@ -233,7 +266,76 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/timeseries":
             self._send(200, "application/json", json.dumps(self._timeseries()).encode())
             return
+        if parsed.path == "/api/events/stream":
+            self._sse_stream()
+            return
         self._send(404, "text/plain", b"not found\n")
+
+    def _sse_stream(self):
+        """Server-Sent Events — push new audit rows in real time.
+
+        Polls the DB every 1s for new events (id > last_seen_id). Yields an
+        SSE `event: audit` payload per new row.
+        """
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")  # nginx hint
+        self.end_headers()
+        last_id = 0
+        try:
+            with self._connect() as conn:
+                cur = conn.execute("SELECT COALESCE(MAX(id), 0) FROM events")
+                last_id = int(cur.fetchone()[0])
+        except Exception:
+            pass
+        # Send an initial heartbeat so the client knows we're connected.
+        self.wfile.write(b": connected\n\n")
+        self.wfile.flush()
+        while True:
+            try:
+                with self._connect() as conn:
+                    conn.row_factory = sqlite3.Row
+                    # Make sure the table exists (no-op if it does).
+                    try:
+                        conn.execute("SELECT 1 FROM events LIMIT 1")
+                    except Exception:
+                        # Schema missing — wait for Audit to create it.
+                        time.sleep(0.5)
+                        continue
+                    cur = conn.execute(
+                        "SELECT id, ts, source, agent, action, rule_id, "
+                        "rule_name, reason, event_json FROM events "
+                        "WHERE id > ? ORDER BY id ASC LIMIT 50",
+                        (last_id,),
+                    )
+                    rows = cur.fetchall()
+                for row in rows:
+                    payload = {
+                        "id": row["id"],
+                        "ts": row["ts"],
+                        "source": row["source"],
+                        "agent": row["agent"],
+                        "action": str(row["action"]),
+                        "rule_id": row["rule_id"],
+                        "rule_name": row["rule_name"],
+                        "reason": row["reason"],
+                        "event": json.loads(row["event_json"]) if row["event_json"] else {},
+                    }
+                    self.wfile.write(b"event: audit\n")
+                    self.wfile.write(b"data: " + json.dumps(payload).encode() + b"\n\n")
+                    self.wfile.flush()
+                    last_id = max(last_id, row["id"])
+                # Heartbeat to keep connection alive through proxies.
+                self.wfile.write(b": ping\n\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+            except Exception:
+                # Stay quiet — better to drop the connection than spam logs.
+                return
+            time.sleep(1)
 
     def _send(self, code: int, ctype: str, body: bytes) -> None:
         self.send_response(code)
