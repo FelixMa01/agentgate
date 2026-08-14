@@ -41,8 +41,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Extract changelog
         id: changelog
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
-          CHANGELOG=$(awk '/^## v/{f=1} f && /^## / && !/^## v$VERSION/ {exit} f' CHANGELOG.md || true)
+          VERSION=${VERSION#v}
+          CHANGELOG=$(awk -v VERSION="$VERSION" '/^## \[/ && $2 == "["VERSION"]" {f=1; next} f && /^## \[/ {exit} f' CHANGELOG.md || true)
           echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
