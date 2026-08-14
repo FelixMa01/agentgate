@@ -120,4 +120,20 @@ rm -rf "$TMPCURSOR"
 echo "$CURSOR_OUT" | grep -q '"deny"' && ok "cursor hook install + deny" || { echo "got: $CURSOR_OUT"; fail $step; }
 
 echo
-echo "All 7 steps verified ✓"
+# (overwritten below by PyPI step)
+# 8. PyPI install — verify the published package is installable
+step=$((step+1))
+PYTESTMP=$(mktemp -d)
+(cd "$PYTESTMP" && uv venv --quiet && uv pip install agentgate-firewall --quiet 2>&1 | tail -2)
+PYAG=$(ls "$PYTESTMP/.venv/bin/agentgate" 2>/dev/null || true)
+if [ -x "$PYAG" ]; then
+  PYVER=$("$PYAG" --version 2>&1)
+  rm -rf "$PYTESTMP"
+  echo "$PYVER" | grep -q "0.2.0" && ok "PyPI install (agentgate-firewall v0.2.0)" || { echo "got: $PYVER"; fail $step; }
+else
+  rm -rf "$PYTESTMP"
+  fail $step
+fi
+
+echo
+echo "All 8 steps verified ✓"
