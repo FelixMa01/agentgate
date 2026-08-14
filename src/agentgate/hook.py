@@ -77,6 +77,73 @@ def decision_to_cc_response(action: Action, reason: str | None) -> dict:
     return out
 
 
+def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, str]:
+    """Run policy + ASK flow for an AgentGate event, record audit rows,
+    and return the final (action, reason). Returns ('allow', '') on misconfig.
+
+    Shared between the Claude Code hook and the Cursor hook so both adapters
+    funnel through the same policy + audit + approval flow.
+    """
+    policy_path = os.environ.get("AGENTGATE_POLICY")
+    db_path = os.environ.get("AGENTGATE_DB")
+    if not policy_path or not db_path:
+        print("AgentGate: AGENTGATE_POLICY and AGENTGATE_DB must be set",
+              file=sys.stderr)
+        return Action.ALLOW, ""
+    try:
+        policy = load_policy(policy_path)
+        audit = Audit(db_path)
+    except Exception as exc:
+        print(f"AgentGate: internal error ({exc}); failing open", file=sys.stderr)
+        return Action.ALLOW, ""
+
+    tool = event.get("tool", "?")
+    action, rule = policy.evaluate(event)
+    reason = (rule.reason if rule else "") or (rule.name if rule else "")
+    agent = event.get("agent") or source
+
+    if action == Action.ASK:
+        ask = STORE.request(event, tool, rule.id if rule else None)
+        try:
+            status = notify_ask(
+                ask.token, tool, event,
+                rule.name if rule else None, reason,
+            )
+        except Exception as exc:
+            status = f"notify-error: {exc}"
+        audit.record(
+            source=source, agent=agent, action=Action.ASK,
+            event={**event, "_ask_token": ask.token, "_notify": status},
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=reason,
+        )
+        timeout = float(os.environ.get("AGENTGATE_ASK_TIMEOUT", "60"))
+        decision = STORE.wait(ask.token, timeout=timeout)
+        if decision is None:
+            decision_str = "deny"
+            timeout_note = f"AgentGate ASK timed out after {timeout:.0f}s → denied"
+        else:
+            decision_str = decision
+            timeout_note = ""
+        action = Action(decision_str)
+        audit.record(
+            source=source, agent=agent, action=action,
+            event={**event, "_ask_token": ask.token, "_resolved": decision_str},
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=(reason + " " + timeout_note).strip(),
+        )
+    else:
+        audit.record(
+            source=source, agent=agent, action=action, event=event,
+            rule_id=rule.id if rule else None,
+            rule_name=rule.name if rule else None,
+            reason=reason or None,
+        )
+    return action, reason
+
+
 def main() -> int:
     policy_path = os.environ.get("AGENTGATE_POLICY")
     db_path = os.environ.get("AGENTGATE_DB")
@@ -108,71 +175,7 @@ def main() -> int:
         return 0
 
     event, tool, agent = claude_event_to_agent_event(payload)
-
-    try:
-        policy = load_policy(policy_path)
-        audit = Audit(db_path)
-    except Exception as exc:
-        # Fail open on internal error so we don't block the agent.
-        print(f"AgentGate: internal error ({exc}); failing open", file=sys.stderr)
-        return 0
-
-    action, rule = policy.evaluate(event)
-    reason = (rule.reason if rule else "") or (rule.name if rule else "")
-
-    # ASK action: notify Slack, wait for human decision.
-    if action == Action.ASK:
-        ask = STORE.request(event, tool, rule.id if rule else None)
-        # Notify (Slack or file fallback).
-        try:
-            status = notify_ask(
-                ask.token, tool, event,
-                rule.name if rule else None, reason,
-            )
-        except Exception as exc:
-            status = f"notify-error: {exc}"
-        # Write a 'pending' row to the audit so the ask is visible there too.
-        audit.record(
-            source="claude-code",
-            agent=agent,
-            action=Action.ASK,
-            event={**event, "_ask_token": ask.token, "_notify": status},
-            rule_id=rule.id if rule else None,
-            rule_name=rule.name if rule else None,
-            reason=reason,
-        )
-        # Wait for human. Honor AGENTGATE_ASK_TIMEOUT (default 60s).
-        timeout = float(os.environ.get("AGENTGATE_ASK_TIMEOUT", "60"))
-        decision = STORE.wait(ask.token, timeout=timeout)
-        if decision is None:
-            # Timeout: deny by default for safety.
-            decision_str = "deny"
-            timeout_note = f"AgentGate ASK timed out after {timeout:.0f}s → denied"
-        else:
-            decision_str = decision
-            timeout_note = ""
-        action = Action(decision_str)
-        # Update audit row with the resolution.
-        audit.record(
-            source="claude-code",
-            agent=agent,
-            action=action,
-            event={**event, "_ask_token": ask.token, "_resolved": decision_str},
-            rule_id=rule.id if rule else None,
-            rule_name=rule.name if rule else None,
-            reason=(reason + " " + timeout_note).strip(),
-        )
-    else:
-        audit.record(
-            source="claude-code",
-            agent=agent,
-            action=action,
-            event=event,
-            rule_id=rule.id if rule else None,
-            rule_name=rule.name if rule else None,
-            reason=reason or None,
-        )
-
+    action, reason = evaluate_event(event, source="claude-code")
     response = decision_to_cc_response(action, reason)
     json.dump(response, sys.stdout)
     sys.stdout.write("\n")

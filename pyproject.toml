@@ -1,7 +1,26 @@
 [project]
 name = "agentgate"
-version = "0.1.0"
+version = "0.2.0"
 description = "Firewall for AI coding agents — intercept, log, approve every action."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "FelixMa01", email = "FelixMa01@users.noreply.github.com" }]
+keywords = ["ai", "security", "cli", "agent", "firewall", "policy-as-code", "claude-code", "anthropic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 requires-python = ">=3.12"
 dependencies = [
     "click>=8.4.2",
@@ -16,6 +35,11 @@ dev = [
     "pytest>=9.1.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/FelixMa01/agentgate"
+Issues = "https://github.com/FelixMa01/agentgate/issues"
+Changelog = "https://github.com/FelixMa01/agentgate/releases"
+
 [project.scripts]
 agentgate = "agentgate.cli:main"
 
@@ -25,6 +49,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentgate"]
+include = ["src/agentgate/py.typed"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/agentgate", "tests", "scripts", "examples", "README.md", "LICENSE"]
+exclude = [".venv", "demo", "*.db", ".github"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

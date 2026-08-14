@@ -2,6 +2,7 @@
 from __future__ import annotations
 import os
 from pathlib import Path
+from shlex import quote as shlex_quote
 import json
 import sys
 
@@ -274,6 +275,44 @@ def install_hook(policy: str, db: str, target_dir: str, scope: str, matchers: st
     console.print("agentgate installed. Run [bold]uv sync[/] in the project root.")
     console.print("\n[dim]Test it:[/]")
     console.print(f'  echo \'{{"tool_name":"Bash","tool_input":{{"command":"rm -rf /etc"}}}}\\\' | AGENTGATE_POLICY={policy_abs} AGENTGATE_DB={db_abs} {hook_script}')
+
+
+@main.command(name="install-cursor-hook")
+@click.option("--policy", "-p", required=True, type=click.Path(exists=True))
+@click.option("--db", required=True, type=click.Path())
+@click.option("--target", "target_dir", default=".")
+def install_cursor_hook(policy: str, db: str, target_dir: str) -> None:
+    """Install the AgentGate hook as a Cursor beforeShellExecution script.
+
+    Writes .cursor/hooks.json pointing at `python -m agentgate.cursor_hook`
+    using the project venv's python, and exports AGENTGATE_POLICY/AGENTGATE_DB
+    so the hook subprocess can find them.
+    """
+    target = Path(target_dir).resolve()
+    cursor_dir = target / ".cursor"
+    cursor_dir.mkdir(parents=True, exist_ok=True)
+    project_root = Path(__file__).resolve().parents[2]
+    py = project_root / ".venv" / "bin" / "python"
+
+    cmd = (
+        f"AGENTGATE_POLICY={shlex_quote(str(Path(policy).resolve()))} "
+        f"AGENTGATE_DB={shlex_quote(str(Path(db).resolve()))} "
+        f"{shlex_quote(str(py))} -m agentgate.cursor_hook"
+    )
+    hooks_cfg = {
+        "version": 1,
+        "hooks": {
+            "beforeShellExecution": [{"command": cmd}],
+            "beforeFileEdit":       [{"command": cmd}],
+            "beforeFileRead":       [{"command": cmd}],
+        },
+    }
+    cfg_path = cursor_dir / "hooks.json"
+    cfg_path.write_text(json.dumps(hooks_cfg, indent=2))
+    console.print(f"[green]\u2713[/] Wrote {cfg_path}")
+    console.print(f"  policy: {policy}")
+    console.print(f"  audit:  {db}")
+    console.print("[yellow]\u00b7[/] Restart Cursor to pick up the new hooks.")
 
 
 @main.command()

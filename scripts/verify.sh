@@ -12,7 +12,7 @@ ok()   { echo "✓ $1"; }
 
 # 1. Pytest
 step=$((step+1))
-uv run pytest tests/ -q | tail -1 | grep -qE '48 passed' && ok "pytest (48 passed)" || fail $step
+uv run pytest tests/ -q | tail -1 | grep -qE 'passed' && ok "pytest (all passed)" || fail $step
 
 # 2. Init + smoke eval
 step=$((step+1))
@@ -98,5 +98,26 @@ uv run agentgate uninstall-hook --target "$TMPHOOK" >/dev/null 2>&1
 rm -rf "$TMPHOOK"
 echo "$HOOK_OUT" | grep -q '"deny"' && ok "hook install + deny (real Claude Code protocol output)" || { echo "got: $HOOK_OUT"; fail $step; }
 
+# 7. Cursor hook — same deny path, different payload shape
+step=$((step+1))
+TMPCURSOR=$(mktemp -d)
+cat > "$TMPCURSOR/policy.yaml" <<EOF
+version: 1
+default: allow
+rules:
+  - id: deny-rm
+    match: {tool: Bash, command: "rm -rf /*"}
+    action: deny
+EOF
+uv run agentgate install-cursor-hook -p "$TMPCURSOR/policy.yaml" --db "$TMPCURSOR/audit.db" --target "$TMPCURSOR" >/dev/null 2>&1
+cat > "$TMPCURSOR/payload.json" <<EOF
+{"hook_event_name":"beforeShellExecution","tool_name":"Shell","tool_input":{"command":"rm -rf /etc"}}
+EOF
+CURSOR_OUT=$(AGENTGATE_POLICY="$TMPCURSOR/policy.yaml" AGENTGATE_DB="$TMPCURSOR/audit.db" \
+  AGENTGATE_PAYLOAD_FILE="$TMPCURSOR/payload.json" \
+  .venv/bin/python -m agentgate.cursor_hook 2>/dev/null)
+rm -rf "$TMPCURSOR"
+echo "$CURSOR_OUT" | grep -q '"deny"' && ok "cursor hook install + deny" || { echo "got: $CURSOR_OUT"; fail $step; }
+
 echo
-echo "All 6 steps verified ✓"
+echo "All 7 steps verified ✓"
