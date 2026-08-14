@@ -1,5 +1,7 @@
 """`agentgate approval-server` — start the HTTP /approve server."""
+
 from __future__ import annotations
+
 import click
 
 from ..approval_server import serve

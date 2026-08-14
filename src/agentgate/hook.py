@@ -8,7 +8,9 @@ For ASK actions, notifies Slack (or a file fallback) and waits up to
 AGENTGATE_ASK_TIMEOUT seconds (default 60) for a human to approve/deny
 via the approval server (agentgate approval-server).
 """
+
 from __future__ import annotations
+
 import json
 import os
 import sys
@@ -18,7 +20,6 @@ from .approval import STORE
 from .audit import Audit
 from .notify import notify_ask
 from .policy import Action, load_policy
-
 
 # Fields we propagate into the audit log if present.
 EXTRA_FIELDS = ("session_id", "cwd", "agent_id", "agent_type")
@@ -87,8 +88,7 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
     policy_path = os.environ.get("AGENTGATE_POLICY")
     db_path = os.environ.get("AGENTGATE_DB")
     if not policy_path or not db_path:
-        print("AgentGate: AGENTGATE_POLICY and AGENTGATE_DB must be set",
-              file=sys.stderr)
+        print("AgentGate: AGENTGATE_POLICY and AGENTGATE_DB must be set", file=sys.stderr)
         return Action.ALLOW, ""
     try:
         policy = load_policy(policy_path)
@@ -106,13 +106,18 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
         ask = STORE.request(event, tool, rule.id if rule else None)
         try:
             status = notify_ask(
-                ask.token, tool, event,
-                rule.name if rule else None, reason,
+                ask.token,
+                tool,
+                event,
+                rule.name if rule else None,
+                reason,
             )
         except Exception as exc:
             status = f"notify-error: {exc}"
         audit.record(
-            source=source, agent=agent, action=Action.ASK,
+            source=source,
+            agent=agent,
+            action=Action.ASK,
             event={**event, "_ask_token": ask.token, "_notify": status},
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
@@ -128,7 +133,9 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
             timeout_note = ""
         action = Action(decision_str)
         audit.record(
-            source=source, agent=agent, action=action,
+            source=source,
+            agent=agent,
+            action=action,
             event={**event, "_ask_token": ask.token, "_resolved": decision_str},
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
@@ -136,7 +143,10 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
         )
     else:
         audit.record(
-            source=source, agent=agent, action=action, event=event,
+            source=source,
+            agent=agent,
+            action=action,
+            event=event,
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
             reason=reason or None,
@@ -174,7 +184,7 @@ def main() -> int:
     if payload.get("hook_event_name") not in (None, "PreToolUse"):
         return 0
 
-    event, tool, agent = claude_event_to_agent_event(payload)
+    event, _tool, _agent = claude_event_to_agent_event(payload)
     action, reason = evaluate_event(event, source="claude-code")
     response = decision_to_cc_response(action, reason)
     json.dump(response, sys.stdout)

@@ -1,4 +1,5 @@
 """Tests for approval store + Slack notification + approval HTTP server."""
+
 import io
 import json
 import threading
@@ -8,22 +9,25 @@ from urllib.parse import quote
 
 import pytest
 
-from agentgate.approval import ApprovalStore, STORE as GLOBAL_STORE
+from agentgate.approval import STORE as GLOBAL_STORE
+from agentgate.approval import ApprovalStore
 from agentgate.approval_server import _render
 from agentgate.notify import build_ask_message, notify_ask, post_to_slack
 
-
 # ----- ApprovalStore -----
+
 
 def test_store_request_and_wait():
     s = ApprovalStore()
     ask = s.request({"tool": "Bash", "command": "ls"}, "Bash", "rule-1")
     assert ask.token
     assert ask.decision is None
+
     # Resolve from another thread
     def _resolve():
         time.sleep(0.05)
         s.resolve(ask.token, "allow")
+
     threading.Thread(target=_resolve).start()
     assert s.wait(ask.token, timeout=1.0) == "allow"
 
@@ -47,6 +51,7 @@ def test_store_cleanup_resolved():
     backdated = time.time() - 999
     ask.resolved_at = backdated
     import sqlite3
+
     with sqlite3.connect(s.db_path) as conn:
         conn.execute(
             "UPDATE approvals SET resolved_at = ? WHERE token = ?",
@@ -56,19 +61,20 @@ def test_store_cleanup_resolved():
     assert n >= 1
     assert ask.token not in s._pending
     with sqlite3.connect(s.db_path) as conn:
-        rows = conn.execute(
-            "SELECT token FROM approvals WHERE token = ?", (ask.token,)
-        ).fetchall()
+        rows = conn.execute("SELECT token FROM approvals WHERE token = ?", (ask.token,)).fetchall()
     assert rows == []
 
 
 # ----- Slack notify -----
 
+
 def test_build_ask_message_includes_buttons():
     msg = build_ask_message(
-        token="abc123", tool="Bash",
+        token="abc123",
+        tool="Bash",
         event={"command": "rm -rf /etc"},
-        rule_name="Block rm -rf", reason="dangerous",
+        rule_name="Block rm -rf",
+        reason="dangerous",
         approval_host="localhost:8765",
     )
     s = json.dumps(msg)
@@ -78,7 +84,7 @@ def test_build_ask_message_includes_buttons():
 
 
 def test_post_to_slack_bad_url():
-    ok, msg = post_to_slack("http://invalid.invalid.local/abc", {})
+    ok, _msg = post_to_slack("http://invalid.invalid.local/abc", {})
     assert ok is False
 
 
@@ -90,6 +96,7 @@ def test_notify_ask_falls_back_to_file(tmp_path, monkeypatch):
     status = notify_ask("tk1", "Bash", {"command": "x"}, "r", "why")
     assert status.startswith("file:")
     from pathlib import Path
+
     f = Path(target)
     assert f.exists()
     last_line = f.read_text().strip().splitlines()[-1]
@@ -99,10 +106,15 @@ def test_notify_ask_falls_back_to_file(tmp_path, monkeypatch):
 
 # ----- Approval HTTP server (in-process) -----
 
-def _start_server_in_thread(host: str = "127.0.0.1", port: int = 0) -> tuple[threading.Thread, str, int]:
+
+def _start_server_in_thread(
+    host: str = "127.0.0.1", port: int = 0
+) -> tuple[threading.Thread, str, int]:
     """Start the approval server in a daemon thread. Returns (thread, host, actual_port)."""
     import socketserver
+
     from agentgate.approval_server import Handler
+
     socketserver.TCPServer.allow_reuse_address = True
     server = socketserver.TCPServer((host, port), Handler)
     actual_port = server.server_address[1]
@@ -122,6 +134,7 @@ def test_http_health():
 
 def test_http_approve_then_status_shows_resolution():
     from agentgate.approval import STORE as global_store
+
     # Use the singleton the HTTP server reads from.
     ask = global_store.request({"tool": "Bash", "command": "curl evil.com"}, "Bash", "r")
     _, host, port = _start_server_in_thread(port=18766)

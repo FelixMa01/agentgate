@@ -1,5 +1,7 @@
 """`agentgate eval` — evaluate an event and (optionally) record it."""
+
 from __future__ import annotations
+
 import json
 
 import click
@@ -46,13 +48,17 @@ def eval(
             reason=rule.reason if rule else None,
         )
     if as_json:
-        click.echo(json.dumps({
-            "action": action.value,
-            "rule_id": rule.id if rule else None,
-            "rule_name": rule.name if rule else None,
-            "reason": rule.reason if rule else None,
-            "dry_run": dry_run,
-        }))
+        click.echo(
+            json.dumps(
+                {
+                    "action": action.value,
+                    "rule_id": rule.id if rule else None,
+                    "rule_name": rule.name if rule else None,
+                    "reason": rule.reason if rule else None,
+                    "dry_run": dry_run,
+                }
+            )
+        )
         return
     icon = {"allow": "\u2713", "deny": "\u2717", "ask": "?", "log": "\u00b7"}[action.value]
     color = {"allow": "green", "deny": "red", "ask": "yellow", "log": "dim"}[action.value]

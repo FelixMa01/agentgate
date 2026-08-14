@@ -1,13 +1,18 @@
 """Tests for the notification module (Slack + Telegram + file fallback)."""
+
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agentgate.notify import (
-    post_to_telegram, post_to_slack, build_telegram_message,
-    build_ask_message, notify_ask, _md_escape,
+    _md_escape,
+    build_ask_message,
+    build_telegram_message,
+    notify_ask,
+    post_to_slack,
+    post_to_telegram,
 )
 
 
@@ -19,8 +24,14 @@ def test_md_escape_basic():
 
 def test_build_telegram_message_includes_urls(monkeypatch):
     monkeypatch.setenv("AGENTGATE_APPROVAL_HOST", "127.0.0.1:8765")
-    msg = build_telegram_message("tok123", "Bash", {"tool": "Bash", "command": "rm -rf /"},
-                                 "danger", "mass delete", "127.0.0.1:8765")
+    msg = build_telegram_message(
+        "tok123",
+        "Bash",
+        {"tool": "Bash", "command": "rm -rf /"},
+        "danger",
+        "mass delete",
+        "127.0.0.1:8765",
+    )
     assert "tok123" in msg
     assert "127.0.0.1:8765/approve/tok123?d=allow" in msg
     assert "127.0.0.1:8765/approve/tok123?d=deny" in msg
@@ -46,7 +57,9 @@ def test_post_to_telegram_success():
 
 def test_post_to_telegram_failure():
     fake_resp = MagicMock()
-    fake_resp.read.return_value = json.dumps({"ok": False, "description": "chat not found"}).encode()
+    fake_resp.read.return_value = json.dumps(
+        {"ok": False, "description": "chat not found"}
+    ).encode()
     fake_resp.__enter__ = lambda s: s
     fake_resp.__exit__ = MagicMock(return_value=False)
     with patch("urllib.request.urlopen", return_value=fake_resp):

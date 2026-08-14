@@ -1,4 +1,5 @@
 """Tests for network egress filter."""
+
 import pytest
 
 from agentgate.network import evaluate_network

@@ -1,5 +1,7 @@
 """`agentgate install-continue-hook` — Continue.dev settings wiring."""
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from shlex import quote as shlex_quote
@@ -42,14 +44,18 @@ def install_continue_hook(policy: str, db: str, target_dir: str) -> None:
     hooks = existing.setdefault("hooks", {})
     pre = hooks.setdefault("PreToolUse", [])
     pre = [h for h in pre if "AGENTGATE_POLICY" not in json.dumps(h)]
-    pre.append({
-        "matcher": "Bash|Read|Write|Edit|WebFetch|Grep|Glob",
-        "hooks": [{
-            "type": "command",
-            "command": cmd,
-            "statusMessage": "AgentGate evaluating\u2026",
-        }],
-    })
+    pre.append(
+        {
+            "matcher": "Bash|Read|Write|Edit|WebFetch|Grep|Glob",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": cmd,
+                    "statusMessage": "AgentGate evaluating\u2026",
+                }
+            ],
+        }
+    )
     hooks["PreToolUse"] = pre
     existing["hooks"] = hooks
     settings_path.write_text(json.dumps(existing, indent=2) + "\n")

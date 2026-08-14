@@ -1,4 +1,5 @@
 """Tests for the Claude Code PreToolUse hook payload translation."""
+
 import io
 import json
 import os
@@ -8,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from agentgate.hook import claude_event_to_agent_event, decision_to_cc_response, main as hook_main
+from agentgate.hook import claude_event_to_agent_event, decision_to_cc_response
+from agentgate.hook import main as hook_main
 from agentgate.policy import Action
 
 
@@ -112,12 +114,16 @@ rules:
     assert rc == 0
     out = json.loads(captured.getvalue())
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert out["hookSpecificOutput"]["permissionDecisionReason"] == "" or "reason" not in out["hookSpecificOutput"]
+    assert (
+        out["hookSpecificOutput"]["permissionDecisionReason"] == ""
+        or "reason" not in out["hookSpecificOutput"]
+    )
     # the rule had empty reason so permissionDecisionReason may be missing; check systemMessage
     assert "AgentGate" in out.get("systemMessage", "")
 
     # verify audit recorded
     from agentgate.audit import Audit
+
     rows = Audit(db).recent()
     assert len(rows) == 1
     assert rows[0]["action"] == "deny"
@@ -183,12 +189,14 @@ rules:
     action: deny
 """)
     db = tmp_path / "audit.db"
-    payload = json.dumps({
-        "hook_event_name": "PreToolUse",
-        "session_id": "subproc",
-        "tool_name": "Bash",
-        "tool_input": {"command": "rm -rf /etc"},
-    })
+    payload = json.dumps(
+        {
+            "hook_event_name": "PreToolUse",
+            "session_id": "subproc",
+            "tool_name": "Bash",
+            "tool_input": {"command": "rm -rf /etc"},
+        }
+    )
 
     env = os.environ.copy()
     env["AGENTGATE_POLICY"] = str(policy)
@@ -202,6 +210,8 @@ rules:
         timeout=30,
     )
     if proc.returncode != 0:
-        pytest.fail(f"hook exited {proc.returncode}\nstdout: {proc.stdout!r}\nstderr: {proc.stderr!r}")
+        pytest.fail(
+            f"hook exited {proc.returncode}\nstdout: {proc.stdout!r}\nstderr: {proc.stderr!r}"
+        )
     out = json.loads(proc.stdout.decode())
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"

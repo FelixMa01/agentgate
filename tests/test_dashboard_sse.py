@@ -1,4 +1,5 @@
 """Tests for the dashboard SSE endpoint."""
+
 import json
 import socket
 import threading
@@ -23,9 +24,7 @@ def test_sse_stream_yields_new_events(tmp_path):
     """End-to-end: start server, record events, ensure SSE pushes them."""
     db = tmp_path / "audit.db"
     port = _free_port()
-    t = threading.Thread(
-        target=serve, args=(str(db), "127.0.0.1", port), daemon=True
-    )
+    t = threading.Thread(target=serve, args=(str(db), "127.0.0.1", port), daemon=True)
     t.start()
     time.sleep(0.5)
 
@@ -59,11 +58,16 @@ def test_sse_stream_yields_new_events(tmp_path):
     # Now write a new event into the same DB.
     from agentgate.audit import Audit
     from agentgate.policy import Action
+
     audit = Audit(str(db))
     audit.record(
-        source="test", agent="sse", action=Action.DENY,
-        event={"tool": "Bash", "command": "rm -rf /"}, rule_id="deny-rm",
-        rule_name="Block destructive rm", reason="sse test",
+        source="test",
+        agent="sse",
+        action=Action.DENY,
+        event={"tool": "Bash", "command": "rm -rf /"},
+        rule_id="deny-rm",
+        rule_name="Block destructive rm",
+        reason="sse test",
     )
     rt.join(timeout=6)
     done.set()
@@ -75,6 +79,6 @@ def test_sse_stream_yields_new_events(tmp_path):
     # And the data should be valid JSON.
     for line in body.splitlines():
         if line.startswith("data: "):
-            payload = json.loads(line[len("data: "):])
+            payload = json.loads(line[len("data: ") :])
             assert payload["action"] in {"deny", "Action.DENY", "DENY"}
             assert payload["rule_id"] == "deny-rm"

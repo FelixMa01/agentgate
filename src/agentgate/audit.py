@@ -1,15 +1,15 @@
 """SQLite-backed audit trail of every evaluated event."""
+
 from __future__ import annotations
+
 import json
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterable
 
-from .policy import Action, Policy
-
+from .policy import Action
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -84,7 +84,7 @@ class Audit:
             sql += " WHERE action = ?"
             params = (action.value,)
         sql += " ORDER BY id DESC LIMIT ?"
-        params = params + (limit,)
+        params = (*params, limit)
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
 

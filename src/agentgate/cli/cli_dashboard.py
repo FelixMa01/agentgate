@@ -1,5 +1,7 @@
 """`agentgate dashboard` — start the audit dashboard HTTP server."""
+
 from __future__ import annotations
+
 import click
 
 from ..dashboard import serve

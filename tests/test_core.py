@@ -1,5 +1,7 @@
 """Tests for AgentGate core."""
+
 from pathlib import Path
+
 import pytest
 
 from agentgate.audit import Audit
@@ -65,14 +67,20 @@ def test_default_action(tmp_path: Path):
     p = tmp_path / "p.yaml"
     p.write_text("version: 1\ndefault: deny\nrules: []")
     pol = load_policy(p)
-    action, rule = pol.evaluate({"tool": "Bash", "command": "ls"})
+    action, _rule = pol.evaluate({"tool": "Bash", "command": "ls"})
     assert action == Action.DENY
 
 
 def test_audit_record(tmp_path: Path):
     db = Audit(tmp_path / "test.db")
-    eid = db.record(source="manual", action=Action.DENY, event={"x": 1},
-                    rule_id="r1", rule_name="Test", reason="because")
+    eid = db.record(
+        source="manual",
+        action=Action.DENY,
+        event={"x": 1},
+        rule_id="r1",
+        rule_name="Test",
+        reason="because",
+    )
     assert eid > 0
     rows = db.recent()
     assert len(rows) == 1
@@ -90,6 +98,7 @@ def test_audit_filter(tmp_path: Path):
 def test_cli_eval_runs(tmp_path: Path, policy: Path, monkeypatch):
     """Smoke-test: init -> eval -> audit shows the recorded decision."""
     from click.testing import CliRunner
+
     from agentgate.cli import main as cli_main
 
     runner = CliRunner()
@@ -98,8 +107,15 @@ def test_cli_eval_runs(tmp_path: Path, policy: Path, monkeypatch):
     # eval a denied command
     res = runner.invoke(
         cli_main,
-        ["eval", "-p", str(policy), "--db", str(db_path),
-         "--event-json", '{"tool": "Bash", "command": "rm -rf /etc"}'],
+        [
+            "eval",
+            "-p",
+            str(policy),
+            "--db",
+            str(db_path),
+            "--event-json",
+            '{"tool": "Bash", "command": "rm -rf /etc"}',
+        ],
     )
     assert res.exit_code == 0
     assert "DENY" in res.output

@@ -16,7 +16,9 @@ This module provides:
   their Claude settings.
 - `install-continue-hook` CLI command.
 """
+
 from __future__ import annotations
+
 import json
 import os
 import sys
@@ -41,12 +43,10 @@ def continue_payload_to_event(payload: dict) -> tuple[dict, str, str | None]:
 
 def main() -> int:
     from .hook import evaluate_event
+
     payload_file = os.environ.get("AGENTGATE_PAYLOAD_FILE")
-    if payload_file:
-        payload = json.loads(Path(payload_file).read_text())
-    else:
-        payload = json.load(sys.stdin)
-    event, tool, agent = continue_payload_to_event(payload)
+    payload = json.loads(Path(payload_file).read_text()) if payload_file else json.load(sys.stdin)
+    event, _tool, _agent = continue_payload_to_event(payload)
     action, reason = evaluate_event(event, source="continue")
     # Continue.dev uses the same response shape as Claude Code.
     out = {

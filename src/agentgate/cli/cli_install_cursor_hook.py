@@ -1,5 +1,7 @@
 """`agentgate install-cursor-hook` — Cursor beforeShellExecution wiring."""
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 from shlex import quote as shlex_quote
@@ -39,8 +41,8 @@ def install_cursor_hook(policy: str, db: str, target_dir: str) -> None:
         "version": 1,
         "hooks": {
             "beforeShellExecution": [{"command": cmd}],
-            "beforeFileEdit":       [{"command": cmd}],
-            "beforeFileRead":       [{"command": cmd}],
+            "beforeFileEdit": [{"command": cmd}],
+            "beforeFileRead": [{"command": cmd}],
         },
     }
     cfg_path = cursor_dir / "hooks.json"

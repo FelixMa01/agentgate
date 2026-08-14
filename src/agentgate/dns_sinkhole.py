@@ -23,18 +23,17 @@ Limitations vs mitmproxy
 But it works WITHOUT any proxy env vars and WITHOUT any privileged install
 beyond /etc/resolver/ (macOS) or systemd-resolved drop-in (Linux).
 """
+
 from __future__ import annotations
-import json
+
 import os
 import socket
 import struct
 import sys
-import threading
 from pathlib import Path
-from typing import Optional
-
 
 # --- DNS protocol helpers (RFC 1035) ------------------------------------------
+
 
 def _encode_query_name(name: str) -> bytes:
     """Encode a domain name as a DNS QNAME (length-prefixed labels)."""
@@ -56,7 +55,7 @@ def _decode_query_name(data: bytes, offset: int) -> tuple[str, int]:
             break
         if n & 0xC0:
             raise ValueError("DNS name compression not supported in stub")
-        labels.append(data[offset:offset + n].decode("ascii"))
+        labels.append(data[offset : offset + n].decode("ascii"))
         offset += n
     return ".".join(labels), offset
 
@@ -78,15 +77,8 @@ def _build_a_response(query: bytes, name: str, ip: str) -> bytes:
     question = _encode_query_name(name) + struct.pack(">HH", 1, 1)
     # Answer: name (we re-encode for simplicity), type, class, ttl, rdlength, rdata
     ip_bytes = bytes(int(o) for o in ip.split("."))
-    answer = (
-        _encode_query_name(name)
-        + struct.pack(">HHIH", 1, 1, 60, 4)
-        + ip_bytes
-    )
-    return (
-        txn_id + flags + qdcount + ancount + nscount + arcount
-        + question + answer
-    )
+    answer = _encode_query_name(name) + struct.pack(">HHIH", 1, 1, 60, 4) + ip_bytes
+    return txn_id + flags + qdcount + ancount + nscount + arcount + question + answer
 
 
 def _build_nxdomain(query: bytes, name: str) -> bytes:
@@ -106,9 +98,11 @@ def _build_sinkhole_response(query: bytes, name: str) -> bytes:
 
 # --- Policy lookup ------------------------------------------------------------
 
+
 def _resolve(query_name: str, policy) -> str:
     """Return one of: 'allow', 'deny', 'nxdomain'."""
     from .network import evaluate_network
+
     decision = evaluate_network(query_name, policy.network)
     if decision.action == "deny":
         return "deny"
@@ -117,11 +111,17 @@ def _resolve(query_name: str, policy) -> str:
 
 # --- Server ------------------------------------------------------------------
 
+
 class DnsSinkhole:
     """A tiny DNS server on UDP 127.0.0.1:port. Single-threaded is fine."""
 
-    def __init__(self, policy, host: str = "127.0.0.1", port: int = 5300,
-                 upstream: Optional[tuple[str, int]] = None):
+    def __init__(
+        self,
+        policy,
+        host: str = "127.0.0.1",
+        port: int = 5300,
+        upstream: tuple[str, int] | None = None,
+    ):
         self.policy = policy
         self.host = host
         self.port = port
@@ -155,7 +155,7 @@ class DnsSinkhole:
         if decision == "allow":
             try:
                 return self._forward(query)
-            except (socket.timeout, OSError):
+            except (TimeoutError, OSError):
                 return _build_nxdomain(query, name)
             except Exception:
                 return _build_nxdomain(query, name)
@@ -168,7 +168,10 @@ class DnsSinkhole:
         sock.bind((self.host, self.port))
         print(f"[agentgate] DNS sinkhole on udp://{self.host}:{self.port}", flush=True)
         print(f"[agentgate] upstream: {self.upstream[0]}:{self.upstream[1]}", flush=True)
-        print(f"[agentgate] policy: {self.policy.allowed_domains}+ / {self.policy.denied_domains}-", flush=True)
+        print(
+            f"[agentgate] policy: {self.policy.allowed_domains}+ / {self.policy.denied_domains}-",
+            flush=True,
+        )
         while True:
             try:
                 data, addr = sock.recvfrom(4096)
@@ -184,23 +187,23 @@ class DnsSinkhole:
 
 def _resolve_with_retry(query_name: str, policy, retries: int = 1):
     """Helper that retries policy re-load — for the test harness."""
-    from .policy import load_policy
+
     decision = _resolve(query_name, policy)
     return decision
 
 
 # --- CLI entrypoint ----------------------------------------------------------
 
-def main() -> int:
-    from .policy import load_policy
-    from .cli._common import resolve_policy
 
-    policy_path = os.environ.get("AGENTGATE_POLICY") or (
-        sys.argv[1] if len(sys.argv) > 1 else None
-    )
+def main() -> int:
+    from .cli._common import resolve_policy
+    from .policy import load_policy
+
+    policy_path = os.environ.get("AGENTGATE_POLICY") or (sys.argv[1] if len(sys.argv) > 1 else None)
     if not policy_path:
-        print("usage: agentgate dns <policy.yaml> [--host 127.0.0.1] [--port 5300]",
-              file=sys.stderr)
+        print(
+            "usage: agentgate dns <policy.yaml> [--host 127.0.0.1] [--port 5300]", file=sys.stderr
+        )
         return 2
     policy = load_policy(str(resolve_policy(policy_path)))
     host = os.environ.get("AGENTGATE_DNS_HOST", "127.0.0.1")

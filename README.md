@@ -2,7 +2,9 @@
 
 [![PyPI](https://img.shields.io/pypi/v/agentgate-firewall)](https://pypi.org/project/agentgate-firewall/)
 [![Tests](https://github.com/FelixMa01/agentgate/actions/workflows/test.yml/badge.svg)](https://github.com/FelixMa01/agentgate/actions)
+[![Release](https://github.com/FelixMa01/agentgate/actions/workflows/publish.yml/badge.svg)](https://github.com/FelixMa01/agentgate/actions)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Coverage](docs/coverage.svg)](https://github.com/FelixMa01/agentgate)
 
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)]()
 

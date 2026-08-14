@@ -1,4 +1,5 @@
 """Tests for the Cursor hook adapter."""
+
 import json
 import subprocess
 import sys
@@ -75,11 +76,15 @@ rules:
 """)
     db = tmp_path / "audit.db"
     payload = tmp_path / "payload.json"
-    payload.write_text(json.dumps({
-        "hook_event_name": "beforeShellExecution",
-        "tool_name": "Shell",
-        "tool_input": {"command": "rm -rf /etc"},
-    }))
+    payload.write_text(
+        json.dumps(
+            {
+                "hook_event_name": "beforeShellExecution",
+                "tool_name": "Shell",
+                "tool_input": {"command": "rm -rf /etc"},
+            }
+        )
+    )
 
     result = subprocess.run(
         [str(py), "-m", "agentgate.cursor_hook"],
@@ -91,7 +96,9 @@ rules:
             "HOME": str(tmp_path),
             "LANG": "C",
         },
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
     out = json.loads(result.stdout.strip())

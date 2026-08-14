@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="98" height="20">
+<linearGradient id="b" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+<clipPath id="a"><rect width="98" height="20" rx="3" fill="#fff"/></clipPath>
+<g clip-path="url(#a)">
+<path fill="#555" d="M0 0h59v20H0z"/>
+<path fill="#dfb317" d="M59 0h39v20H59z"/>
+<text fill="#010101" fill-opacity=".3" x="29.5" y="14">coverage</text>
+<text fill="#fff" x="29.5" y="13">coverage</text>
+<text fill="#010101" fill-opacity=".3" x="78" y="14">63%</text>
+<text fill="#fff" x="78" y="13">63%</text>
+</g><path d="M0 0h98v20H0z" fill="url(#b)"/>
+</svg>

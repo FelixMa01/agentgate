@@ -7,16 +7,16 @@ the webhook receiver (Slack incoming webhooks are POST). This server is the
 To start it: `agentgate approval-server --port 8765`
 Then in the Slack message template the host:port is rendered so the link works.
 """
+
 from __future__ import annotations
+
 import http.server
 import socketserver
 import sys
-from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
-from .approval import STORE
 from . import __version__
-
+from .approval import STORE
 
 HTML = """\
 <!doctype html>
@@ -38,10 +38,10 @@ def _render(event: dict, decision: str | None, token: str) -> str:
     body = f"""
     <h1>🛡️ AgentGate v{__version__}</h1>
     <div class="box">
-      <p><b>Tool:</b> <span class="kv">{event.get('tool', '?')}</span></p>
+      <p><b>Tool:</b> <span class="kv">{event.get("tool", "?")}</span></p>
       <p><b>Event:</b></p>
       <pre style="background:#f4f4f4;padding:10px;border-radius:4px;overflow:auto">{event}</pre>
-      <p><b>Status:</b> {('resolved: ' + decision) if decision else '⏳ awaiting decision'}</p>
+      <p><b>Status:</b> {("resolved: " + decision) if decision else "⏳ awaiting decision"}</p>
     </div>
     """
     if not decision:
@@ -71,7 +71,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             qs = parse_qs(parsed.query)
             ask = STORE.get(token)
             if not ask:
-                self._respond(404, f"Token {token!r} not found (or already resolved & cleaned up)\n")
+                self._respond(
+                    404, f"Token {token!r} not found (or already resolved & cleaned up)\n"
+                )
                 return
             d = qs.get("d", [None])[0]
             if d in ("allow", "deny"):
@@ -84,10 +86,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self._respond(404, "not found\n")
 
     def _respond(self, code: int, body: str) -> None:
-        if body.startswith("<"):
-            ctype = "text/html; charset=utf-8"
-        else:
-            ctype = "text/plain; charset=utf-8"
+        ctype = "text/html; charset=utf-8" if body.startswith("<") else "text/plain; charset=utf-8"
         encoded = body.encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)

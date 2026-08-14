@@ -1,4 +1,5 @@
 """Tests for the DNS sinkhole — no actual network calls needed."""
+
 import socket
 import struct
 import threading
@@ -7,8 +8,12 @@ import time
 import pytest
 
 from agentgate.dns_sinkhole import (
-    DnsSinkhole, _encode_query_name, _decode_query_name,
-    _build_a_response, _build_nxdomain, _build_sinkhole_response,
+    DnsSinkhole,
+    _build_a_response,
+    _build_nxdomain,
+    _build_sinkhole_response,
+    _decode_query_name,
+    _encode_query_name,
 )
 
 
@@ -60,6 +65,7 @@ network:
     - "*.evil.test"
 """)
     from agentgate.policy import load_policy
+
     policy = load_policy(str(policy_path))
 
     # Find a free port.
@@ -68,8 +74,9 @@ network:
     port = sock.getsockname()[1]
     sock.close()
 
-    server = DnsSinkhole(policy, host="127.0.0.1", port=port,
-                          upstream=("127.0.0.1", 1))  # upstream unused for denied
+    server = DnsSinkhole(
+        policy, host="127.0.0.1", port=port, upstream=("127.0.0.1", 1)
+    )  # upstream unused for denied
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     time.sleep(0.2)
@@ -99,6 +106,7 @@ network:
     - github.com
 """)
     from agentgate.policy import load_policy
+
     policy = load_policy(str(policy_path))
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -106,8 +114,7 @@ network:
     port = sock.getsockname()[1]
     sock.close()
 
-    server = DnsSinkhole(policy, host="127.0.0.1", port=port,
-                          upstream=("127.0.0.1", 1))
+    server = DnsSinkhole(policy, host="127.0.0.1", port=port, upstream=("127.0.0.1", 1))
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
     time.sleep(0.2)

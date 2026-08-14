@@ -1,5 +1,7 @@
 """`agentgate pull-policy` / `agentgate push-events` — hosted team mode."""
+
 from __future__ import annotations
+
 import click
 
 from .. import hosted
@@ -8,8 +10,9 @@ from . import console
 
 @click.command("pull-policy")
 @click.option("--url", default=None, help="Override AGENTGATE_HOSTED_URL.")
-@click.option("--out", default="policy.hosted.yaml",
-              help="Local file to write the pulled policy to.")
+@click.option(
+    "--out", default="policy.hosted.yaml", help="Local file to write the pulled policy to."
+)
 def pull_policy(url: str | None, out: str) -> None:
     """Download a policy from the hosted endpoint."""
     try:

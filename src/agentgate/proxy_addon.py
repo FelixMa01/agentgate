@@ -8,7 +8,9 @@ Run with:
 Then export HTTP_PROXY=http://127.0.0.1:8080 and HTTPS_PROXY=...
 (or use --mode transparent:on with iptables — out of scope here).
 """
+
 from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
@@ -24,14 +26,10 @@ from agentgate.policy import Action, load_policy  # noqa: E402
 
 class AgentGateAddon:
     def __init__(self) -> None:
-        policy_path = os.environ.get("AGENTGATE_POLICY") or os.environ.get(
-            "agentgate_policy"
-        )
-        db_path = os.environ.get("AGENTGATE_DB") or os.environ.get("agentgate_db")
+        policy_path = os.environ.get("AGENTGATE_POLICY")
+        db_path = os.environ.get("AGENTGATE_DB")
         if not policy_path or not db_path:
-            raise RuntimeError(
-                "AGENTGATE_POLICY and AGENTGATE_DB env vars must be set"
-            )
+            raise RuntimeError("AGENTGATE_POLICY and AGENTGATE_DB env vars must be set")
         self.policy = load_policy(policy_path)
         self.audit = Audit(db_path)
         self._intercepted = 0
@@ -45,10 +43,15 @@ class AgentGateAddon:
         self.audit.record(
             source="network",
             agent="mitmproxy",
-            action=Action(decision.action) if decision.action in (
-                "allow", "deny", "ask", "log") else Action.DENY,
-            event={"url": url, "method": flow.request.method,
-                  "host": flow.request.host, "matched": decision.matched_rule},
+            action=Action(decision.action)
+            if decision.action in ("allow", "deny", "ask", "log")
+            else Action.DENY,
+            event={
+                "url": url,
+                "method": flow.request.method,
+                "host": flow.request.host,
+                "matched": decision.matched_rule,
+            },
             rule_id=decision.matched_rule,
             rule_name=f"Network {decision.action}",
             reason=decision.reason,
@@ -56,9 +59,8 @@ class AgentGateAddon:
         if decision.action in ("deny", "ask"):
             self._intercepted += 1
             from mitmproxy.http import Response
-            msg = (
-                f"AgentGate: {decision.action.upper()} — {decision.reason}\n"
-            ).encode()
+
+            msg = (f"AgentGate: {decision.action.upper()} — {decision.reason}\n").encode()
             flow.response = Response.make(
                 403,
                 msg,
@@ -67,8 +69,7 @@ class AgentGateAddon:
 
     def done(self):
         ctx_log = getattr(self, "_intercepted", 0)
-        print(f"[agentgate] session done; intercepted {ctx_log} requests",
-              file=sys.stderr)
+        print(f"[agentgate] session done; intercepted {ctx_log} requests", file=sys.stderr)
 
 
 addons = [AgentGateAddon()]

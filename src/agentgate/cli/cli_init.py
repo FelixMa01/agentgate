@@ -1,11 +1,13 @@
 """`agentgate init` — scaffold a default policy and audit DB."""
+
 from __future__ import annotations
+
 from pathlib import Path
 
 import click
 
-from . import console
 from ..audit import Audit
+from . import console
 from ._common import DEFAULT_POLICY
 
 

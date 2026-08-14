@@ -1,16 +1,18 @@
 """Policy DSL — load YAML rules, evaluate tool calls and network requests."""
+
 from __future__ import annotations
+
 import fnmatch
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 
-class Action(str, Enum):
+class Action(StrEnum):
     ALLOW = "allow"
     DENY = "deny"
     ASK = "ask"  # require human approval (Slack/Telegram)

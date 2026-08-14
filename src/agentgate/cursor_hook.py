@@ -19,20 +19,21 @@ Example payload (inferred from public community discussion):
 The hook exits 0 with a JSON body, e.g.:
     {"decision": "deny", "reason": "..."}
 """
+
 from __future__ import annotations
+
 import json
 import os
 import sys
 from pathlib import Path
 
-
 # Mapping from Cursor hook events → AgentGate event schema.
 # Keys are read from the hook payload; values are the AgentGate event keys.
 _CURSOR_TO_AGENTGATE: dict[str, dict[str, str]] = {
     "beforeShellExecution": {"tool_name": "Bash", "tool_input_key": "command"},
-    "beforeFileEdit":       {"tool_name": "Edit", "tool_input_key": "file_path"},
-    "beforeFileRead":       {"tool_name": "Read", "tool_input_key": "file_path"},
-    "beforeMCPExecution":   {"tool_name": "MCP",  "tool_input_key": "request"},
+    "beforeFileEdit": {"tool_name": "Edit", "tool_input_key": "file_path"},
+    "beforeFileRead": {"tool_name": "Read", "tool_input_key": "file_path"},
+    "beforeMCPExecution": {"tool_name": "MCP", "tool_input_key": "request"},
 }
 
 
@@ -70,11 +71,9 @@ def render_response(decision: str, reason: str = "") -> dict:
 
 def main() -> int:
     from .hook import evaluate_event  # reuse the main hook runner
+
     payload_file = os.environ.get("AGENTGATE_PAYLOAD_FILE")
-    if payload_file:
-        payload = json.loads(Path(payload_file).read_text())
-    else:
-        payload = json.load(sys.stdin)
+    payload = json.loads(Path(payload_file).read_text()) if payload_file else json.load(sys.stdin)
     event = cursor_to_event(payload)
     action, reason = evaluate_event(event, source="cursor")
     print(json.dumps(render_response(action.value, reason)))

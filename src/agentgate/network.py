@@ -7,7 +7,9 @@ Evaluates an outbound URL against policy.network:
 
 Returns one of ("allow", "deny", "ask") plus a reason.
 """
+
 from __future__ import annotations
+
 import fnmatch
 import re
 from dataclasses import dataclass
@@ -18,7 +20,9 @@ from urllib.parse import urlparse
 class NetDecision:
     action: str  # "allow" | "deny" | "ask"
     reason: str
-    matched_rule: str | None = None  # "allowed:github.com" / "denied:pastebin.com" / "https_required"
+    matched_rule: str | None = (
+        None  # "allowed:github.com" / "denied:pastebin.com" / "https_required"
+    )
 
 
 def _extract_host(url: str) -> str | None:
@@ -51,32 +55,40 @@ def _glob_match(host: str, pattern: str) -> bool:
 def evaluate_network(url: str, network_cfg: dict, default: str = "allow") -> NetDecision:
     host = _extract_host(url)
     if not host:
-        return NetDecision("deny", f"could not parse host from URL: {url!r}",
-                           matched_rule="invalid_url")
+        return NetDecision(
+            "deny", f"could not parse host from URL: {url!r}", matched_rule="invalid_url"
+        )
 
-    scheme = (urlparse(url).scheme.lower() if "://" in url else "https")
+    scheme = urlparse(url).scheme.lower() if "://" in url else "https"
     has_explicit_scheme = "://" in url
 
     # 1. require_https check (only applies when URL has explicit scheme)
     if network_cfg.get("require_https") and has_explicit_scheme and scheme not in ("https", ""):
-        return NetDecision("deny", f"non-HTTPS URL denied: {url!r}",
-                           matched_rule="https_required")
+        return NetDecision("deny", f"non-HTTPS URL denied: {url!r}", matched_rule="https_required")
 
     # 2. explicit deny first (deny takes precedence)
     for pattern in network_cfg.get("denied_domains", []):
         if _glob_match(host, pattern):
-            return NetDecision("deny", f"host {host} matches denied pattern {pattern!r}",
-                               matched_rule=f"denied:{pattern}")
+            return NetDecision(
+                "deny",
+                f"host {host} matches denied pattern {pattern!r}",
+                matched_rule=f"denied:{pattern}",
+            )
 
     # 3. allowed list (if defined, only those are allowed)
     allowed = network_cfg.get("allowed_domains")
     if allowed:
         for pattern in allowed:
             if _glob_match(host, pattern):
-                return NetDecision("allow", f"host {host} allowed by {pattern!r}",
-                                   matched_rule=f"allowed:{pattern}")
-        return NetDecision("deny", f"host {host} not in allowed_domains",
-                           matched_rule="not_allowed")
+                return NetDecision(
+                    "allow",
+                    f"host {host} allowed by {pattern!r}",
+                    matched_rule=f"allowed:{pattern}",
+                )
+        return NetDecision(
+            "deny", f"host {host} not in allowed_domains", matched_rule="not_allowed"
+        )
 
-    return NetDecision(default, f"host {host} (no deny match, no allow list)",
-                       matched_rule="default")
+    return NetDecision(
+        default, f"host {host} (no deny match, no allow list)", matched_rule="default"
+    )

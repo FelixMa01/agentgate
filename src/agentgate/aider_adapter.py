@@ -19,12 +19,13 @@ This module provides:
 The launcher is meant to be put on PATH ahead of the real `aider` so
 typing `aider` actually invokes AgentGate-wrapped aider.
 """
+
 from __future__ import annotations
+
 import json
 import os
 import sys
 from pathlib import Path
-
 
 # Aider doesn't expose tool-level hooks; we use a simpler model: the launcher
 # asks the user for confirmation on every Bash-like operation Aider performs,
@@ -71,11 +72,9 @@ def aider_payload_to_event(payload: dict) -> dict:
 
 def main() -> int:
     from .hook import evaluate_event
+
     payload_file = os.environ.get("AGENTGATE_PAYLOAD_FILE")
-    if payload_file:
-        payload = json.loads(Path(payload_file).read_text())
-    else:
-        payload = json.load(sys.stdin)
+    payload = json.loads(Path(payload_file).read_text()) if payload_file else json.load(sys.stdin)
     event = aider_payload_to_event(payload)
     action, reason = evaluate_event(event, source="aider")
     print(json.dumps({"action": action.value, "reason": reason}))

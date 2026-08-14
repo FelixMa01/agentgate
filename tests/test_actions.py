@@ -1,7 +1,8 @@
 """Tests for the GitHub Actions adapter."""
+
 import subprocess
 
-from agentgate.actions_annotate import _git_diff, _emit_annotation
+from agentgate.actions_annotate import _emit_annotation, _git_diff
 
 
 def test_git_diff_finds_added_lines(tmp_path):

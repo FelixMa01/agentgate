@@ -17,10 +17,11 @@ Configuration:
   AGENTGATE_HOSTED_URL=https://agentgate.yourteam.com
   AGENTGATE_HOSTED_TOKEN=...           # bearer token
 """
+
 from __future__ import annotations
+
 import json
 import os
-import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -28,7 +29,7 @@ from pathlib import Path
 
 def _hosted_headers() -> dict[str, str]:
     """Build request headers for hosted endpoints."""
-    headers = {"User-Agent": f"agentgate/0.5"}
+    headers = {"User-Agent": "agentgate/0.5"}
     token = os.environ.get("AGENTGATE_HOSTED_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -43,9 +44,7 @@ def pull_policy(url: str | None = None, cache: Path | None = None) -> str:
     if not url:
         base = os.environ.get("AGENTGATE_HOSTED_URL", "").rstrip("/")
         if not base:
-            raise RuntimeError(
-                "no URL: pass it as arg or set AGENTGATE_HOSTED_URL"
-            )
+            raise RuntimeError("no URL: pass it as arg or set AGENTGATE_HOSTED_URL")
         url = f"{base}/policy.yaml"
     req = urllib.request.Request(url, headers=_hosted_headers())
     try:
@@ -68,13 +67,12 @@ def push_events(db_path: str, url: str | None = None) -> int:
     Returns the number of events sent.
     """
     from .audit import Audit
+
     audit = Audit(db_path)
     if not url:
         base = os.environ.get("AGENTGATE_HOSTED_URL", "").rstrip("/")
         if not base:
-            raise RuntimeError(
-                "no URL: pass it as arg or set AGENTGATE_HOSTED_URL"
-            )
+            raise RuntimeError("no URL: pass it as arg or set AGENTGATE_HOSTED_URL")
         url = f"{base}/api/events"
     # Find cursor.
     last_id_url = f"{url}?cursor=last_id"
@@ -101,7 +99,8 @@ def push_events(db_path: str, url: str | None = None) -> int:
         out_rows.append(out)
     payload = json.dumps({"events": out_rows}).encode()
     req = urllib.request.Request(
-        url, data=payload,
+        url,
+        data=payload,
         headers={**_hosted_headers(), "Content-Type": "application/json"},
         method="POST",
     )

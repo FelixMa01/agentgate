@@ -1,4 +1,5 @@
 """Tests for `agentgate lint`."""
+
 import subprocess
 import sys
 from pathlib import Path
@@ -8,9 +9,17 @@ import pytest
 
 def test_lint_clean_policy():
     result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint",
-         "-p", "examples/policy-secure.yaml"],
-        capture_output=True, text=True, timeout=10,
+        [
+            sys.executable,
+            "-m",
+            "agentgate.cli.__init__",
+            "lint",
+            "-p",
+            "examples/policy-secure.yaml",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode == 0
     assert "no issues" in result.stdout
@@ -31,7 +40,9 @@ rules:
 """)
     result = subprocess.run(
         [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode != 0
     assert "duplicate" in result.stdout.lower()
@@ -49,7 +60,9 @@ rules:
 """)
     result = subprocess.run(
         [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode == 0  # warning only
     assert "no reason" in result.stdout
@@ -66,9 +79,10 @@ rules:
     action: deny
 """)
     result = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "lint",
-         "-p", str(p), "--strict"],
-        capture_output=True, text=True, timeout=10,
+        [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p), "--strict"],
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode != 0
     assert "warning" in result.stdout.lower()
@@ -86,7 +100,9 @@ rules:
 """)
     result = subprocess.run(
         [sys.executable, "-m", "agentgate.cli.__init__", "lint", "-p", str(p)],
-        capture_output=True, text=True, timeout=10,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
     assert result.returncode != 0
     assert "empty match" in result.stdout

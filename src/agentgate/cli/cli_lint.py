@@ -1,17 +1,18 @@
 """`agentgate lint` — policy sanity checks beyond syntax."""
+
 from __future__ import annotations
+
 import click
+import yaml as _yaml
 
 from ..policy import Action, load_policy
 from . import console
 from ._common import friendly_yaml_error, resolve_policy
-import yaml as _yaml
 
 
 @click.command()
 @click.option("--policy", "-p", required=True, type=click.Path(exists=True))
-@click.option("--strict", is_flag=True,
-              help="Treat warnings as errors.")
+@click.option("--strict", is_flag=True, help="Treat warnings as errors.")
 def lint(policy: str, strict: bool) -> None:
     """Lint a policy.yaml — find duplicate IDs, missing fields, dead rules, etc."""
     p = resolve_policy(policy)
@@ -25,7 +26,7 @@ def lint(policy: str, strict: bool) -> None:
 
     # 1. Duplicate rule IDs.
     seen: dict[str, int] = {}
-    for i, r in enumerate(pol.rules):
+    for _i, r in enumerate(pol.rules):
         seen[r.id] = seen.get(r.id, 0) + 1
     dupes = [rid for rid, n in seen.items() if n > 1]
     if dupes:
@@ -56,9 +57,8 @@ def lint(policy: str, strict: bool) -> None:
                     warnings.append(f"rule '{r.id}' match key '{k}' has no base field")
 
     # 6. Empty network policy in strict mode.
-    if strict and pol.network:
-        if not pol.allowed_domains and not pol.denied_domains:
-            warnings.append("strict mode: network block present but empty (denies nothing)")
+    if strict and pol.network and not pol.allowed_domains and not pol.denied_domains:
+        warnings.append("strict mode: network block present but empty (denies nothing)")
 
     # 7. No metadata in strict mode.
     if strict and not pol.metadata:
@@ -66,8 +66,9 @@ def lint(policy: str, strict: bool) -> None:
 
     # Output
     console.print(f"[bold]Linting[/bold] {p}")
-    console.print(f"  {len(pol.rules)} rules, default={pol.default_action.value}, "
-                  f"network={bool(pol.network)}")
+    console.print(
+        f"  {len(pol.rules)} rules, default={pol.default_action.value}, network={bool(pol.network)}"
+    )
 
     if not errors and not warnings:
         console.print("  [green]\u2713 no issues[/]")
@@ -81,6 +82,4 @@ def lint(policy: str, strict: bool) -> None:
     if errors:
         raise click.ClickException(f"{len(errors)} error(s) found")
     if strict and warnings:
-        raise click.ClickException(
-            f"strict mode: {len(warnings)} warning(s) treated as errors"
-        )
+        raise click.ClickException(f"strict mode: {len(warnings)} warning(s) treated as errors")

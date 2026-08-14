@@ -22,8 +22,10 @@ Usage (in `.github/workflows/agent.yml`):
 
 This makes a CI-visible, auditable gate on every agent-driven PR.
 """
+
 from __future__ import annotations
-import json
+
+import contextlib
 import os
 import subprocess
 import sys
@@ -59,11 +61,13 @@ def _git_diff(workspace: str = ".") -> list[dict]:
             except (IndexError, ValueError):
                 current_line = 0
         elif raw.startswith("+") and not raw.startswith("+++"):
-            out.append({
-                "path": current_file,
-                "line": current_line,
-                "content": raw[1:],
-            })
+            out.append(
+                {
+                    "path": current_file,
+                    "line": current_line,
+                    "content": raw[1:],
+                }
+            )
             current_line += 1
         elif raw.startswith("-") and not raw.startswith("---"):
             # Deletion — don't increment line for additions.
@@ -87,16 +91,15 @@ def _post_review_comment(repo_root: str, body: str) -> None:
     gh_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not gh_token:
         return
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["gh", "pr", "comment", "--body", body],
             cwd=repo_root,
             check=False,
             env={**os.environ, "GH_TOKEN": gh_token},
-            capture_output=True, timeout=15,
+            capture_output=True,
+            timeout=15,
         )
-    except Exception:
-        pass
 
 
 def main() -> int:
@@ -107,8 +110,8 @@ def main() -> int:
         print("::warning::AGENTGATE_POLICY and AGENTGATE_DB must be set", flush=True)
         return 0  # fail open
 
-    from .policy import load_policy
     from .audit import Audit
+    from .policy import load_policy
 
     pol = load_policy(policy_path)
     audit = Audit(db_path)
@@ -136,6 +139,7 @@ def main() -> int:
             reason=rule.reason if rule else None,
         )
         from .policy import Action
+
         if action == Action.DENY and rule:
             msg = f"DENY \u2014 {rule.name}: {rule.reason}"
             _emit_annotation(path, item["line"], "error", msg)

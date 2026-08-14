@@ -14,14 +14,15 @@ The asker thread calls `wait(token, timeout)` which:
   1. Blocks on a Condition (fast path).
   2. On timeout, re-checks the SQLite table (cross-process path).
 """
+
 from __future__ import annotations
+
 import os
 import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS approvals (
@@ -47,6 +48,7 @@ def _db_path() -> Path:
     if db:
         return Path(db)
     import tempfile
+
     return Path(tempfile.gettempdir()) / "agentgate-approvals.db"
 
 
@@ -72,20 +74,23 @@ class ApprovalStore:
 
     def request(self, event: dict, tool: str, rule: str | None = None) -> PendingAsk:
         import secrets
+
         token = secrets.token_urlsafe(8)
         now = time.time()
-        ask = PendingAsk(token=token, created=now, event={"event": event, "tool": tool, "rule": rule})
+        ask = PendingAsk(
+            token=token, created=now, event={"event": event, "tool": tool, "rule": rule}
+        )
         with self._lock:
             self._pending[token] = ask
         # Persist so the HTTP server (or any other process) can see this ask.
         with sqlite3.connect(self.db_path) as conn:
             import json as _json
+
             conn.execute(
                 """INSERT OR REPLACE INTO approvals
                    (token, created, event_json, tool, rule_id)
                    VALUES (?, ?, ?, ?, ?)""",
-                (token, now, _json.dumps({"event": event, "tool": tool, "rule": rule}),
-                 tool, rule),
+                (token, now, _json.dumps({"event": event, "tool": tool, "rule": rule}), tool, rule),
             )
         return ask
 
@@ -122,11 +127,13 @@ class ApprovalStore:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT token, created, event_json, tool, rule_id, decision, resolved_at "
-                "FROM approvals WHERE token = ?", (token,)
+                "FROM approvals WHERE token = ?",
+                (token,),
             ).fetchone()
         if not row:
             return None
         import json as _json
+
         return PendingAsk(
             token=row["token"],
             created=row["created"],
@@ -203,7 +210,7 @@ class ApprovalStore:
 
 # Process-global store — both the hook (caller) and HTTP server (resolver)
 # import this same singleton.
-def _build_store() -> "ApprovalStore":
+def _build_store() -> ApprovalStore:
     return ApprovalStore(_db_path())
 
 

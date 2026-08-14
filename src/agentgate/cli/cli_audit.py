@@ -1,5 +1,7 @@
 """`agentgate audit` — show recent audit log entries."""
+
 from __future__ import annotations
+
 from datetime import datetime
 
 import click
@@ -13,8 +15,9 @@ from . import console
 @click.command()
 @click.option("--db", required=True, type=click.Path())
 @click.option("--limit", default=20, type=int)
-@click.option("--action", "action_filter", default=None,
-              type=click.Choice([a.value for a in Action]))
+@click.option(
+    "--action", "action_filter", default=None, type=click.Choice([a.value for a in Action])
+)
 def audit(db: str, limit: int, action_filter: str | None) -> None:
     """Show recent audit log entries."""
     audit = Audit(db)

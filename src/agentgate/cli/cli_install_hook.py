@@ -1,5 +1,7 @@
 """`agentgate install-hook` / `uninstall-hook` — Claude Code PreToolUse wiring."""
+
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -26,12 +28,23 @@ def _has_agentgate(hook_entry: dict) -> bool:
 @click.command()
 @click.option("--policy", "-p", required=True, type=click.Path(exists=True))
 @click.option("--db", required=True, type=click.Path())
-@click.option("--target", "target_dir", default=".",
-              help="Directory to write .claude/settings.local.json into.")
-@click.option("--scope", type=click.Choice(["project", "user"]), default="project",
-              help="project = .claude/settings.local.json; user = ~/.claude/settings.json")
-@click.option("--matchers", default="Bash|Read|Write|Edit|WebFetch|Grep|Glob",
-              help="Pipe-separated tool names the hook fires on (default: most common).")
+@click.option(
+    "--target",
+    "target_dir",
+    default=".",
+    help="Directory to write .claude/settings.local.json into.",
+)
+@click.option(
+    "--scope",
+    type=click.Choice(["project", "user"]),
+    default="project",
+    help="project = .claude/settings.local.json; user = ~/.claude/settings.json",
+)
+@click.option(
+    "--matchers",
+    default="Bash|Read|Write|Edit|WebFetch|Grep|Glob",
+    help="Pipe-separated tool names the hook fires on (default: most common).",
+)
 def install_hook(policy: str, db: str, target_dir: str, scope: str, matchers: str) -> None:
     """Wire AgentGate as a PreToolUse hook for Claude Code."""
     repo_root = _project_root()
@@ -45,12 +58,14 @@ def install_hook(policy: str, db: str, target_dir: str, scope: str, matchers: st
     env = {"AGENTGATE_POLICY": policy_abs, "AGENTGATE_DB": db_abs}
     hook_entry = {
         "matcher": matchers,
-        "hooks": [{
-            "type": "command",
-            "command": str(hook_script),
-            "env": env,
-            "statusMessage": "AgentGate evaluating\u2026",
-        }],
+        "hooks": [
+            {
+                "type": "command",
+                "command": str(hook_script),
+                "env": env,
+                "statusMessage": "AgentGate evaluating\u2026",
+            }
+        ],
     }
 
     settings_path = _settings_path(scope, target_dir)
@@ -72,7 +87,7 @@ def install_hook(policy: str, db: str, target_dir: str, scope: str, matchers: st
     console.print("agentgate installed. Run [bold]uv sync[/] in the project root.")
     console.print("\n[dim]Test it:[/]")
     console.print(
-        f"  echo '{{\"tool_name\":\"Bash\",\"tool_input\":{{\"command\":\"rm -rf /etc\"}}}}' | "
+        f'  echo \'{{"tool_name":"Bash","tool_input":{{"command":"rm -rf /etc"}}}}\' | '
         f"AGENTGATE_POLICY={policy_abs} AGENTGATE_DB={db_abs} {hook_script}"
     )
 

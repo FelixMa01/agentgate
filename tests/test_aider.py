@@ -1,4 +1,5 @@
 """Tests for the Aider adapter."""
+
 import json
 
 from agentgate.aider_adapter import aider_payload_to_event

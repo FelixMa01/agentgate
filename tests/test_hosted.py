@@ -1,4 +1,5 @@
 """Tests for hosted mode — uses an in-process HTTP server."""
+
 import json
 import socket
 import threading
@@ -8,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from agentgate.hosted import pull_policy, push_events
 from agentgate.audit import Audit
+from agentgate.hosted import pull_policy, push_events
 from agentgate.policy import Action
 
 
@@ -27,7 +28,8 @@ def fake_hosted():
     events: list[dict] = []
 
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *a, **kw): pass
+        def log_message(self, *a, **kw):
+            pass
 
         def do_GET(self):
             if self.path == "/policy.yaml":

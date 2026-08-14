@@ -10,20 +10,20 @@ Renders:
   - Recent events table
   - Live poll every 5s via fetch()
 """
+
 from __future__ import annotations
+
 import http.server
 import json
 import socketserver
 import sqlite3
 import sys
 import time
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from . import __version__
-
 
 INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset=utf-8>
@@ -280,6 +280,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         Returns recent events filtered by action / source / timestamp.
         """
         from urllib.parse import parse_qs
+
         q = parse_qs(parsed.query)
         action = (q.get("action") or [None])[0]
         source = (q.get("source") or [None])[0]
@@ -309,17 +310,19 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         out = []
         for r in rows:
             ev = json.loads(r["event_json"]) if r["event_json"] else {}
-            out.append({
-                "id": r["id"],
-                "ts": r["ts"],
-                "source": r["source"],
-                "agent": r["agent"],
-                "action": str(r["action"]),
-                "rule_id": r["rule_id"],
-                "rule_name": r["rule_name"],
-                "reason": r["reason"],
-                "event": ev,
-            })
+            out.append(
+                {
+                    "id": r["id"],
+                    "ts": r["ts"],
+                    "source": r["source"],
+                    "agent": r["agent"],
+                    "action": str(r["action"]),
+                    "rule_id": r["rule_id"],
+                    "rule_name": r["rule_name"],
+                    "reason": r["reason"],
+                    "event": ev,
+                }
+            )
         self._send(200, "application/json", json.dumps(out).encode())
 
     def _sse_stream(self):
@@ -434,14 +437,16 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         out = []
         for r in rows:
             ev = json.loads(r["event_json"]) if r["event_json"] else {}
-            out.append({
-                "ts": datetime.fromtimestamp(r["ts"]).strftime("%H:%M:%S"),
-                "source": r["source"] or "?",
-                "action": r["action"] or "?",
-                "rule_id": r["rule_id"],
-                "reason": r["reason"] or "",
-                "event": ev,
-            })
+            out.append(
+                {
+                    "ts": datetime.fromtimestamp(r["ts"]).strftime("%H:%M:%S"),
+                    "source": r["source"] or "?",
+                    "action": r["action"] or "?",
+                    "rule_id": r["rule_id"],
+                    "reason": r["reason"] or "",
+                    "event": ev,
+                }
+            )
         return out
 
     def _timeseries(self, hours: int = 24) -> dict:

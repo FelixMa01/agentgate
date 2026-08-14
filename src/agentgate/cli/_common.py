@@ -1,12 +1,13 @@
 """Shared CLI utilities."""
+
 from __future__ import annotations
+
 import os
 from pathlib import Path
 from typing import Optional
 
 import click
 import yaml
-
 
 DEFAULT_POLICY = """\
 version: 1
@@ -94,6 +95,7 @@ def resolve_db(path: str) -> Path:
 def port_in_use(port: int) -> bool:
     """Light-weight check: is anyone listening on this port?"""
     import socket
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         try:
             s.bind(("127.0.0.1", port))

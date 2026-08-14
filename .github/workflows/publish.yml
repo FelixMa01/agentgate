@@ -1,0 +1,53 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # for PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11"
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Run tests
+        run: uv run pytest tests/ -v
+      - name: End-to-end verify
+        run: bash scripts/verify.sh
+      - name: Build package
+        run: uv build
+      - name: Publish to PyPI via trusted publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # No token needed — relies on PyPI "pending publisher" config
+        # (set up at https://pypi.org/manage/account/publishing/ with
+        #  owner=FelixMa01, repo=agentgate, workflow=publish.yml)
+
+  github-release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract changelog
+        id: changelog
+        run: |
+          CHANGELOG=$(awk '/^## v/{f=1} f && /^## / && !/^## v$VERSION/ {exit} f' CHANGELOG.md || true)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: ${{ steps.changelog.outputs.changelog }}
