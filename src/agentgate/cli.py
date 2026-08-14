@@ -101,12 +101,14 @@ def init(dir_: str) -> None:
 @click.option("--source", default="manual", help="Event source label.")
 @click.option("--agent", default=None, help="Agent identifier.")
 @click.option("--event-json", "event_json", default="{}", help="JSON event payload to evaluate.")
+@click.option("--json", "as_json", is_flag=True, help="Emit a JSON line instead of Rich output.")
 def eval(
     policy: str,
     db: str,
     source: str,
     agent: str | None,
     event_json: str,
+    as_json: bool,
 ) -> None:
     """Evaluate an event against the policy and record the decision."""
     pol = load_policy(policy)
@@ -125,6 +127,14 @@ def eval(
         rule_name=rule.name if rule else None,
         reason=rule.reason if rule else None,
     )
+    if as_json:
+        click.echo(json.dumps({
+            "action": action.value,
+            "rule_id": rule.id if rule else None,
+            "rule_name": rule.name if rule else None,
+            "reason": rule.reason if rule else None,
+        }))
+        return
     icon = {"allow": "✓", "deny": "✗", "ask": "?", "log": "·"}[action.value]
     color = {"allow": "green", "deny": "red", "ask": "yellow", "log": "dim"}[action.value]
     console.print(f"[{color}]{icon} {action.value.upper()}[/]", end="")

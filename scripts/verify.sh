@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Verifies AgentGate end-to-end from a clean checkout.
+# Exits non-zero on first failure.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+ROOT="$(pwd)"
+
+step=0
+fail() { echo "✗ step $1 failed"; exit 1; }
+ok()   { echo "✓ $1"; }
+
+# 1. Pytest
+step=$((step+1))
+uv run pytest tests/ -q | tail -1 | grep -qE '48 passed' && ok "pytest (48 passed)" || fail $step
+
+# 2. Init + smoke eval
+step=$((step+1))
+rm -rf demo && mkdir demo
+uv run agentgate init --dir ./demo >/dev/null
+ALLOW=$(uv run agentgate eval -p ./examples/policy.yaml --db ./demo/audit.db \
+  --event-json '{"tool":"Bash","command":"ls -la"}' --json 2>/dev/null || true)
+DENY=$(uv run agentgate eval -p ./examples/policy.yaml --db ./demo/audit.db \
+  --event-json '{"tool":"Bash","command":"rm -rf /etc"}' --json 2>/dev/null || true)
+echo "$ALLOW" | grep -q '"allow"' && echo "$DENY" | grep -q '"deny"' && ok "cli eval (allow + deny)" || fail $step
+
+# 3. Dashboard endpoints
+step=$((step+1))
+uv run agentgate dashboard --db ./demo/audit.db --port 18790 >/dev/null 2>&1 &
+DPID=$!
+sleep 2
+HTML=$(curl -fs http://127.0.0.1:18790/)
+STATS=$(curl -fs http://127.0.0.1:18790/api/stats)
+kill $DPID 2>/dev/null || true
+echo "$HTML" | grep -q "AgentGate" && echo "$STATS" | grep -q '"total"' \
+  && ok "dashboard (HTML + /api/stats)" || fail $step
+
+# 4. Approval server + cross-process resolve
+step=$((step+1))
+uv run python -c "
+import os, threading, time
+os.environ['AGENTGATE_DB'] = './demo/audit.db'
+from agentgate.approval_server import serve
+serve('127.0.0.1', 18791)
+" >/dev/null 2>&1 &
+APID=$!
+sleep 2
+TOKEN=$(uv run python -c "
+import os; os.environ['AGENTGATE_DB']='./demo/audit.db'
+from agentgate.approval import STORE
+ask = STORE.request({'tool':'Bash','command':'verify'},'Bash','verify')
+print(ask.token)
+")
+RESP=$(curl -fs "http://127.0.0.1:18791/approve/$TOKEN?d=allow" || true)
+kill $APID 2>/dev/null || true
+echo "$RESP" | grep -qi "allow" && ok "approval server (resolved allow)" || fail $step
+
+# 5. Network proxy
+step=$((step+1))
+cat > /tmp/agentgate-verify-policy.yaml <<EOF
+version: 1
+default: allow
+rules: []
+network:
+  allowed_domains: ["example.com"]
+  require_https: false
+EOF
+AGENTGATE_POLICY=/tmp/agentgate-verify-policy.yaml \
+AGENTGATE_DB=./demo/audit.db \
+  uv run mitmdump --mode regular --listen-port 18792 --quiet --set block_global=false \
+  --scripts src/agentgate/proxy_addon.py >/dev/null 2>&1 &
+PROXY_PID=$!
+sleep 3
+ALLOW_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --proxy http://127.0.0.1:18792 http://example.com/ || true)
+DENY_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --proxy http://127.0.0.1:18792 http://other-domain.test/ || true)
+kill $PROXY_PID 2>/dev/null || true
+[ "$ALLOW_HTTP" = "200" ] && [ "$DENY_HTTP" = "403" ] && ok "network proxy (200 allow + 403 deny)" || { echo "got allow=$ALLOW_HTTP deny=$DENY_HTTP"; fail $step; }
+
+# 6. Hook install + run + uninstall
+step=$((step+1))
+TMPHOOK=$(mktemp -d)
+cat > "$TMPHOOK/policy.yaml" <<EOF
+version: 1
+default: allow
+rules:
+  - id: deny-rm
+    match: {tool: Bash, command: "rm -rf /*"}
+    action: deny
+EOF
+uv run agentgate install-hook -p "$TMPHOOK/policy.yaml" --db "$TMPHOOK/audit.db" --target "$TMPHOOK" >/dev/null 2>&1
+cat > "$TMPHOOK/payload.json" <<EOF
+{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /etc"}}
+EOF
+HOOK_OUT=$(AGENTGATE_POLICY="$TMPHOOK/policy.yaml" AGENTGATE_DB="$TMPHOOK/audit.db" \
+  AGENTGATE_PAYLOAD_FILE="$TMPHOOK/payload.json" \
+  .venv/bin/python bin/agentgate-hook.py 2>/dev/null)
+uv run agentgate uninstall-hook --target "$TMPHOOK" >/dev/null 2>&1
+rm -rf "$TMPHOOK"
+echo "$HOOK_OUT" | grep -q '"deny"' && ok "hook install + deny (real Claude Code protocol output)" || { echo "got: $HOOK_OUT"; fail $step; }
+
+echo
+echo "All 6 steps verified ✓"
