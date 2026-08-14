@@ -24,6 +24,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import __version__
+from .audit import Audit
 
 INDEX_HTML = """<!doctype html>
 <html lang="en"><head><meta charset=utf-8>
@@ -460,13 +461,28 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
                         "reason": row["reason"],
                         "event": json.loads(row["event_json"]) if row["event_json"] else {},
                     }
-                    self.wfile.write(b"event: audit\n")
-                    self.wfile.write(b"data: " + json.dumps(payload).encode() + b"\n\n")
-                    self.wfile.flush()
+                    msg = b"event: audit\ndata: " + json.dumps(payload).encode() + b"\n\n"
+                    # Write as one chunk + flush the underlying socket, so the
+                    # entire SSE message arrives in a single TCP segment.
+                    self.wfile.write(msg)
+                    try:
+                        self.wfile.flush()
+                    except Exception:
+                        pass
+                    try:
+                        # Force the OS to send immediately (bypass Nagle).
+                        sock = self.connection
+                        sock.setsockopt(__import__("socket").IPPROTO_TCP,
+                                        __import__("socket").TCP_NODELAY, 1)
+                    except Exception:
+                        pass
                     last_id = max(last_id, row["id"])
                 # Heartbeat to keep connection alive through proxies.
                 self.wfile.write(b": ping\n\n")
-                self.wfile.flush()
+                try:
+                    self.wfile.flush()
+                except Exception:
+                    pass
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception:
@@ -561,6 +577,9 @@ def serve(db_path: str | Path, host: str = "127.0.0.1", port: int = 8766) -> Non
     if not db.exists():
         # Touch a fresh DB so the schema is created on first run.
         sqlite3.connect(db).close()
+    # Initialize the schema eagerly so SSE polling doesn't loop on
+    # "table not found" before Audit() ever writes a row.
+    Audit(str(db))
     DashboardHandler.db_path = db
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((host, port), DashboardHandler) as httpd:
