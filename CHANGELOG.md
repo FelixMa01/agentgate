@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-14
+
+### Added
+- **Helm chart** at `deploy/helm/agentgate/` — full k8s deployment with Deployment, Service, PVC, Secret, ConfigMap, Ingress, HPA, ServiceAccount. Production-ready with securityContext (non-root, read-only rootfs, drop ALL caps), resource limits, health probes.
+- **Dashboard time-series chart** — new `GET /api/stats/timeseries?hours=N` endpoint + chart.js stacked bar chart with 1h/6h/24h/3d/7d range selector. Replaces inline SVG.
+- **`agentgate alerts`** — alert engine that evaluates YAML rules against the audit DB with time windows + thresholds + custom message templates (`{{count}}`, `{{window}}`).
+- **`agentgate detect-agents`** — auto-detects which AI coding agents are installed on the host (Claude Code, Cursor, Continue.dev, Aider, GitHub CLI).
+- **`Audit.counts_per_bucket()`** and **`Audit.since_within()`** — new aggregation primitives for dashboards and alerts.
+
+### Fixed
+- `counts_per_bucket` SQL was using `(ts / N) * N` which returned float in SQLite, splitting buckets per microsecond. Now uses `CAST(... AS INTEGER)`.
+- `since_within` returned dict with column indices off-by-one (assumed old schema). Now correctly maps to actual schema (id, ts, source, agent, action, rule_id, rule_name, event_json, reason).
+
+### Tests
+- Added `tests/test_alerts.py` (4 tests covering bucket math + action filter + CLI).
+- Added `tests/test_dashboard.py` (3 tests covering HTML, timeseries API, events filter).
+
 ## [0.7.0] - 2026-08-14
 
 ### Added

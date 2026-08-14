@@ -106,6 +106,58 @@ class Audit:
             ).fetchall()
         return {r["rule_id"]: r["n"] for r in rows}
 
+
+
+    def since_within(self, since_ts: int, action: str | None = None) -> list[dict]:
+        """Return events since a unix timestamp, optionally filtered by action."""
+        sql = "SELECT * FROM events WHERE ts >= ?"
+        params: list = [since_ts]
+        if action:
+            sql += " AND action = ?"
+            # Convert Action enum to its string value
+            action_value = action.value if hasattr(action, "value") else action
+            params.append(action_value)
+        sql += " ORDER BY ts DESC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [
+            # id, ts, source, agent, action, rule_id, rule_name, event_json, reason
+            {"id": r[0], "ts": r[1], "source": r[2], "agent": r[3],
+             "action": r[4], "rule_id": r[5], "rule_name": r[6],
+             "event_json": r[7], "reason": r[8] if len(r) > 8 else None}
+            for r in rows
+        ]
+
+    def counts_per_bucket(self, since_ts: int, bucket_seconds: int = 3600) -> list[dict]:
+        """Return event counts grouped by time bucket since `since_ts` (unix seconds).
+
+        Returns a list of dicts: {ts, count, allow, deny, ask} for each non-empty bucket.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    CAST(ts / ? AS INTEGER) * ? AS bucket_ts,
+                    action,
+                    COUNT(*) AS n
+                FROM events
+                WHERE ts >= ?
+                GROUP BY bucket_ts, action
+                ORDER BY bucket_ts ASC
+                """,
+                (bucket_seconds, bucket_seconds, since_ts),
+            ).fetchall()
+        buckets: dict[int, dict] = {}
+        for bucket_ts, action, n in rows:
+            action_name = action.value if hasattr(action, "value") else str(action)
+            b = buckets.setdefault(int(bucket_ts), {
+                "ts": int(bucket_ts), "count": 0, "allow": 0, "deny": 0, "ask": 0,
+            })
+            b["count"] += int(n)
+            if action_name in b:
+                b[action_name] = int(n)
+        return list(buckets.values())
+
     def since(self, after_id: int = 0, limit: int = 500) -> list[dict]:
         """Return events with id > after_id, ordered ascending."""
         with self._connect() as conn:

@@ -21,10 +21,12 @@ def main() -> None:
 
 
 # Import subcommand objects (each is a click.Command) and register them.
+from .cli_alerts import alerts
 from .cli_approval_server import approval_server
 from .cli_ask_test import ask_test
 from .cli_audit import audit
 from .cli_dashboard import dashboard
+from .cli_detect_agents import detect_agents
 from .cli_docs import docs
 from .cli_doctor import doctor
 from .cli_eval import eval
@@ -43,6 +45,7 @@ for _cmd in (
     init,
     eval,
     audit,
+    alerts,
     stats,
     validate,
     install_hook,
@@ -55,6 +58,7 @@ for _cmd in (
     approval_server,
     ask_test,
     dashboard,
+    detect_agents,
     replay,
     doctor,
     lint,

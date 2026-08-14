@@ -1,0 +1,21 @@
+# Alert rules for AgentGate.
+# Evaluated against the audit DB by `agentgate alerts`.
+
+rules:
+  - name: spike-of-denies
+    window_minutes: 60
+    threshold: 50
+    action: deny
+    message: "{{count}} denies in {{window}} minutes - check if the policy is too strict"
+
+  - name: too-many-asks
+    window_minutes: 30
+    threshold: 20
+    action: ask
+    message: "{{count}} human-approval requests in {{window}} minutes - maybe add explicit allow rules"
+
+  - name: any-network-deny
+    window_minutes: 60
+    threshold: 1
+    action: deny
+    message: "Network request was denied (count={{count}})"

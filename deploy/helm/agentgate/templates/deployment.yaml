@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentgate.fullname" . }}
+  labels:
+    {{- include "agentgate.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "agentgate.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "agentgate.labels" . | nindent 8 }}
+      annotations:
+        agentgate.io/policy-source: {{ .Values.policy.source | quote }}
+        agentgate.io/policy-refresh-seconds: {{ .Values.policy.refreshSeconds | quote }}
+    spec:
+      serviceAccountName: {{ include "agentgate.fullname" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: AGENTGATE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentgate.fullname" . }}-auth
+                  key: token
+            - name: AGENTGATE_POLICY_SOURCE
+              value: {{ .Values.policy.source | quote }}
+            - name: AGENTGATE_POLICY_REFRESH
+              value: {{ .Values.policy.refreshSeconds | quote }}
+            - name: AGENTGATE_POLICY_PATH
+              value: {{ .Values.policy.path | quote }}
+            - name: AGENTGATE_DB
+              value: /var/lib/agentgate/audit.db
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/agentgate
+            - name: config
+              mountPath: /etc/agentgate
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "agentgate.fullname" . }}-data
+        - name: config
+          configMap:
+            name: {{ include "agentgate.fullname" . }}-config
+            items:
+              - key: policy.yaml
+                path: policy.yaml

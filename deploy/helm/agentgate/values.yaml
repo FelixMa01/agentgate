@@ -1,0 +1,91 @@
+# Default values for agentgate.
+# Override with: helm install agentgate ./deploy/helm/agentgate -f my-values.yaml
+
+image:
+  repository: ghcr.io/felixma01/agentgate
+  tag: "0.7.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Hosted mode: pulls policies from a git URL or HTTP endpoint and accepts
+# pushed audit events from agent hosts.
+policy:
+  source: "git+https://github.com/FelixMa01/agentgate-policy-template"
+  refreshSeconds: 60
+  # Set to override the policy file path within the repo
+  path: "policy.yaml"
+
+# Token shared with agent hosts for push-events
+auth:
+  token: "change-me-in-production"
+
+# Service exposes the hosted endpoints
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: agentgate.local
+      paths:
+        - path: /
+  tls: []
+
+# Persistent audit log storage
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: ""
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# liveness/readiness probes (the hosted API serves /healthz)
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 30
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+# Pod-level security context (run as non-root)
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Annotation for agent hosts to discover this server
+serviceAccount:
+  create: true
+  name: ""
+
+# Horizontal pod autoscaling
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80

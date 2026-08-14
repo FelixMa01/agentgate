@@ -1,0 +1,17 @@
+apiVersion: v2
+name: agentgate
+description: Firewall for AI coding agents — hosted team mode
+type: application
+version: 0.7.0
+appVersion: "0.7.0"
+keywords:
+  - security
+  - firewall
+  - ai
+  - agent
+home: https://github.com/FelixMa01/agentgate
+sources:
+  - https://github.com/FelixMa01/agentgate
+maintainers:
+  - name: FelixMa01
+    email: [email protected]

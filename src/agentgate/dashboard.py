@@ -87,8 +87,22 @@ svg {{ display:block; width:100%; height:160px; }}
 
 <div id=chart>
   <h2 style="margin:0 0 12px;font-size:14px;color:var(--muted);
-              text-transform:uppercase;letter-spacing:.5px;">Decisions over the last 24 hours</h2>
-  <svg id=svg viewBox="0 0 720 160" preserveAspectRatio=none></svg>
+              text-transform:uppercase;letter-spacing:.5px;">
+    Decisions over the last 24 hours
+    <span style="float:right;font-weight:400;color:var(--muted);font-size:11px;
+                 text-transform:none;letter-spacing:0">
+      <select id=range onchange="loadTimeseries()" style="background:var(--panel);
+              color:var(--text);border:1px solid var(--border);border-radius:4px;
+              padding:2px 6px;font:inherit">
+        <option value=1>1h</option>
+        <option value=6>6h</option>
+        <option value=24 selected>24h</option>
+        <option value=72>3d</option>
+        <option value=168>7d</option>
+      </select>
+    </span>
+  </h2>
+  <canvas id=tsChart height=160></canvas>
   <div class=legend>
     <span><i style=background:var(--green)></i>allow</span>
     <span><i style=background:var(--red)></i>deny</span>
@@ -237,7 +251,52 @@ function notify(action, rule_id, reason) {
     }
   }
 }
+
+let _tsChart = null;
+async function loadTimeseries() {{
+  const hours = parseInt(document.getElementById('range').value, 10) || 24;
+  let data;
+  try {{
+    data = await fetchJSON(`/api/stats/timeseries?hours=${{hours}}`);
+  }} catch (e) {{
+    console.error('timeseries failed', e);
+    return;
+  }}
+  const labels = data.buckets.map(b => {{
+    const d = new Date(b.ts * 1000);
+    return d.getHours().toString().padStart(2, '0') + ':00';
+  }});
+  const allowData = data.buckets.map(b => b.allow || 0);
+  const denyData  = data.buckets.map(b => b.deny  || 0);
+  const askData   = data.buckets.map(b => b.ask   || 0);
+  const ctx = document.getElementById('tsChart').getContext('2d');
+  if (_tsChart) _tsChart.destroy();
+  _tsChart = new Chart(ctx, {{
+    type: 'bar',
+    data: {{
+      labels,
+      datasets: [
+        {{ label: 'allow', data: allowData, backgroundColor: '#3fb950' }},
+        {{ label: 'deny',  data: denyData,  backgroundColor: '#f85149' }},
+        {{ label: 'ask',   data: askData,   backgroundColor: '#d29922' }},
+      ],
+    }},
+    options: {{
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {{ legend: {{ display: false }} }},
+      scales: {{
+        x: {{ stacked: true, ticks: {{ color: '#7d8590', maxRotation: 0, autoSkipPadding: 16 }} }},
+        y: {{ stacked: true, beginAtZero: true, ticks: {{ color: '#7d8590', precision: 0 }} }},
+      }},
+    }},
+  }});
+}}
+
+loadTimeseries();
+setInterval(loadTimeseries, 30000);
 </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body></html>
 """.replace("__VER__", __version__)
 
@@ -272,6 +331,30 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/events":
             self._api_events(parsed)
             return
+        if parsed.path == "/api/stats/timeseries":
+            self._api_stats_timeseries(parsed)
+            return
+    def _api_stats_timeseries(self, parsed):
+        """Return event counts bucketed by hour for the last N hours."""
+        from urllib.parse import parse_qs
+
+        from .audit import Audit
+        qs = parse_qs(parsed.query)
+        hours = int(qs.get("hours", ["24"])[0])
+        bucket_seconds = 3600
+        since_ts = int(time.time()) - hours * bucket_seconds
+        try:
+            buckets = Audit(self.db_path).counts_per_bucket(since_ts=since_ts, bucket_seconds=bucket_seconds)
+        except Exception as e:
+            self._send(500, "application/json", json.dumps({"error": str(e)}).encode())
+            return
+        self._send(200, "application/json", json.dumps({
+            "hours": hours,
+            "bucket_seconds": bucket_seconds,
+            "buckets": buckets,  # [{ts: int, count: int, deny: int, ask: int}, ...]
+        }).encode())
+
+
         self._send(404, "text/plain", b"not found\n")
 
     def _api_events(self, parsed) -> None:

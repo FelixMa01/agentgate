@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentgate.fullname" . }}-config
+  labels:
+    {{- include "agentgate.labels" . | nindent 4 }}
+data:
+  policy.yaml: |
+    default: deny
+    network: false
+    rules:
+      - name: deny-destructive
+        match:
+          tool: Bash
+          command_regex: ["~rm\\s+-rf\\b", "~mkfs\\.", ":\\(\\)\\{.*\\};:"]
+        action: deny
+        reason: "Destructive command - denied by team policy."
