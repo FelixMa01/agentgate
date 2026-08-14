@@ -128,6 +128,44 @@ def test_decision_change_when_rule_relaxes(base_policy, modified_policy):
     assert rm_change["new_action"] == "ask"
 
 
+def test_deny_first_semantics_overrides_allow_ask():
+    """If any DENY rule matches, it wins — even if an earlier ASK rule also matches.
+
+    This is the right behavior for security: a more specific `deny-rm` should
+    override a broader `ask-bash` rule.
+    """
+    import tempfile
+    txt = (
+        "version: 1\n"
+        "default_action: allow\n"
+        "rules:\n"
+        "  - id: deny-rm\n"
+        "    match:\n"
+        "      tool: Bash\n"
+        "      command_regex: 'rm\\s+'\n"
+        "    action: deny\n"
+        "    reason: rm blocked\n"
+        "  - id: ask-bash\n"
+        "    match: {tool: Bash}\n"
+        "    action: ask\n"
+        "    reason: shell\n"
+    )
+    import os
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(txt)
+        path = f.name
+    from agentgate.policy import Action, load_policy
+    p = load_policy(path)
+    # rm -rf / should be denied (deny-rm) — not asked (ask-bash)
+    action, rule = p.evaluate({"tool": "Bash", "command": "rm -rf /"})
+    assert action == Action.DENY, f"got {action}"
+    assert rule.id == "deny-rm", f"got {rule.id}"
+    # echo hi should ask (ask-bash rule)
+    action, rule = p.evaluate({"tool": "Bash", "command": "echo hi"})
+    assert action == Action.ASK, f"got {action}"
+    os.unlink(path)
+
+
 def test_custom_canary_events(base_policy, modified_policy):
     custom = [{"tool": "Bash", "command": "echo hi"}]
     diff = diff_policies(base_policy, modified_policy, canary_events=custom)

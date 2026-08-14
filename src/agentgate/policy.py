@@ -197,7 +197,14 @@ class Policy:
         return self.effective_action(raw), rule
 
     def _evaluate_raw(self, event: dict) -> tuple[Action, Rule | None]:
-        # Per-rule evaluation
+        # DENY-first semantics: any matching deny rule wins immediately.
+        # This prevents an earlier, broader allow/ask rule from silently
+        # overriding a more specific deny. Without this, `ask-bash` would
+        # shadow `deny-rm` for `rm -rf /`.
+        for rule in self.rules:
+            if rule.action == Action.DENY and rule.matches(event):
+                return Action.DENY, rule
+        # Then first-match for allow/ask rules.
         for rule in self.rules:
             if rule.matches(event):
                 return rule.action, rule

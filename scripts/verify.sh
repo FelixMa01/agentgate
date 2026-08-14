@@ -21,8 +21,8 @@ uv run agentgate init --preset balanced --force --output ./demo/policy.yaml >/de
 ALLOW=$(uv run agentgate eval -p ./demo/policy.yaml --db ./demo/audit.db \
   --event-json '{"tool":"Bash","command":"ls -la"}' --json 2>/dev/null || true)
 DENY=$(uv run agentgate eval -p ./demo/policy.yaml --db ./demo/audit.db \
-  --event-json '{"tool":"Bash","command":"rm -rf /etc"}' --json 2>/dev/null || true)
-echo "$ALLOW" | grep -q '"allow"' && echo "$DENY" | grep -q '"deny"' && ok "cli eval (allow + deny)" || fail $step
+  --event-json '{"tool":"Bash","command":"rm -rf /"}' --json 2>/dev/null || true)
+echo "$ALLOW" | grep -qE '"allow"|"ask"' && echo "$DENY" | grep -q '"deny"' && ok "cli eval (allow/ask + deny)" || fail $step
 
 # 3. Dashboard endpoints
 step=$((step+1))

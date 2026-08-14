@@ -1,55 +1,48 @@
 version: 1
-metadata:
-  author: agentgate
-  version: 1
-  last_reviewed: 2026-08-14
-
-default: allow
-
+default_action: ask
 rules:
-  - id: deny-rm-rf
-    name: Block destructive rm
-    match:
-      tool: Bash
-      command_glob: "rm -rf /*"
-    action: deny
-    reason: "Mass deletion outside repo"
-
-  - id: deny-secrets-read
-    name: Block reading secrets
-    match:
-      tool: Read
-      file_glob: ["*.pem", ".env*", "*id_rsa*"]
-    action: deny
-    reason: "Secret files are off-limits"
-
-  - id: ask-network-exfil
-    name: Require approval for new domains
-    match:
-      tool: Bash
-      command_glob: ["curl *", "wget *", "http*"]
-    action: ask
-    reason: "Outbound network from agent"
-
-  - id: log-grep
-    name: Log read-only search
-    match:
-      tool: Grep
-    action: log
-    reason: ""
-
-network:
-  allowed_domains:
-    - github.com
-    - "*.githubusercontent.com"
-    - pypi.org
-    - "*.pypi.org"
-    - openai.com
-    - "*.openai.com"
-    - anthropic.com
-    - "*.anthropic.com"
-  denied_domains:
-    - pastebin.com
-    - transfer.sh
-    - "*gist.github.com/leak*"
-  require_https: true
+- id: allow-reads
+  match:
+    tool:
+    - Read
+    - Glob
+    - Grep
+  action: allow
+  reason: Read-only inspection
+- id: allow-git-status
+  match:
+    tool: Bash
+    command_glob: git status*
+  action: allow
+  reason: Safe git read
+- id: allow-git-diff
+  match:
+    tool: Bash
+    command_glob: git diff*
+  action: allow
+  reason: Safe git read
+- id: deny-network
+  match:
+    tool:
+    - WebFetch
+    - Curl
+  action: deny
+  reason: Network blocked
+- id: deny-rm
+  match:
+    tool: Bash
+    command_regex: rm\s+(-.*\s+)?(/\s*$|~\s*$|\.\s*$|\*\s*$)
+  action: deny
+  reason: Destructive rm blocked
+- id: ask-bash
+  match:
+    tool: Bash
+  action: ask
+  reason: Shell command needs approval
+- id: ask-write
+  match:
+    tool:
+    - Write
+    - Edit
+  action: ask
+  reason: File modification needs approval
