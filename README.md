@@ -16,7 +16,7 @@ When an `ask` action fires, AgentGate posts to a Slack incoming webhook and wait
 
 ```bash
 # 1. Install
-git clone https://github.com/you/agentgate && cd agentgate
+git clone https://github.com/FelixMa01/agentgate && cd agentgate
 uv sync
 
 # 2. Init a policy + audit DB in your project
