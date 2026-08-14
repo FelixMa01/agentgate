@@ -17,10 +17,10 @@ uv run pytest tests/ -q | tail -1 | grep -qE 'passed' && ok "pytest (all passed)
 # 2. Init + smoke eval
 step=$((step+1))
 rm -rf demo && mkdir demo
-uv run agentgate init --dir ./demo >/dev/null
-ALLOW=$(uv run agentgate eval -p ./examples/policy.yaml --db ./demo/audit.db \
+uv run agentgate init --preset balanced --force --output ./demo/policy.yaml >/dev/null
+ALLOW=$(uv run agentgate eval -p ./demo/policy.yaml --db ./demo/audit.db \
   --event-json '{"tool":"Bash","command":"ls -la"}' --json 2>/dev/null || true)
-DENY=$(uv run agentgate eval -p ./examples/policy.yaml --db ./demo/audit.db \
+DENY=$(uv run agentgate eval -p ./demo/policy.yaml --db ./demo/audit.db \
   --event-json '{"tool":"Bash","command":"rm -rf /etc"}' --json 2>/dev/null || true)
 echo "$ALLOW" | grep -q '"allow"' && echo "$DENY" | grep -q '"deny"' && ok "cli eval (allow + deny)" || fail $step
 
