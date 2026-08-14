@@ -1,5 +1,9 @@
 # AgentGate
 
+[![PyPI](https://img.shields.io/pypi/v/agentgate-firewall)](https://pypi.org/project/agentgate-firewall/)
+[![Tests](https://github.com/FelixMa01/agentgate/actions/workflows/test.yml/badge.svg)](https://github.com/FelixMa01/agentgate/actions)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 > **One-line firewall for AI coding agents.** Intercepts every tool call, network request, and human approval — let Claude Code / Cursor / Codex touch what you allow, block what you don't, ask for the rest.
 
 AgentGate sits between your AI coding agent and the rest of your system. It ships as three small pieces you wire up in 60 seconds:
