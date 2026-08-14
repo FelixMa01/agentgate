@@ -20,10 +20,14 @@ class Action(str, Enum):
 @dataclass
 class Rule:
     id: str
-    name: str
-    match: dict[str, Any]  # {"tool": "Bash", "command_glob": "rm -rf *"}
+    match: dict[str, Any]
     action: Action
+    name: str = ""
     reason: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            self.name = self.id
 
     def matches(self, event: dict) -> bool:
         for key, pattern in self.match.items():

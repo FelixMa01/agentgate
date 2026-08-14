@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Write|Edit|WebFetch|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/macbookm4air32g/projects/agentgate/bin/agentgate-hook.py",
+            "env": {
+              "AGENTGATE_POLICY": "/Users/macbookm4air32g/projects/agentgate/examples/policy.yaml",
+              "AGENTGATE_DB": "/Users/macbookm4air32g/projects/agentgate/demo/audit.db"
+            },
+            "statusMessage": "AgentGate evaluating\u2026"
+          }
+        ]
+      }
+    ]
+  }
+}
