@@ -1,0 +1,23 @@
+{
+  "name": "AgentGate Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "features": {
+    "ghcr.io/devcontainers-contrib/features/uv:2": {}
+  },
+  "postCreateCommand": "uv sync --all-extras && make verify",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.testing.pytestEnabled": true,
+        "python.defaultInterpreterPath": ".venv/bin/python"
+      },
+      "extensions": ["ms-python.python", "ms-python.black-formatter"]
+    }
+  },
+  "forwardPorts": [8766, 8765, 8080],
+  "portsAttributes": {
+    "8766": { "label": "AgentGate Dashboard", "autoForward": true },
+    "8765": { "label": "AgentGate Approval Server", "autoForward": false },
+    "8080": { "label": "AgentGate Network Proxy", "autoForward": false }
+  }
+}

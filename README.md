@@ -4,7 +4,15 @@
 [![Tests](https://github.com/FelixMa01/agentgate/actions/workflows/test.yml/badge.svg)](https://github.com/FelixMa01/agentgate/actions)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-> **One-line firewall for AI coding agents.** Intercepts every tool call, network request, and human approval — let Claude Code / Cursor / Codex touch what you allow, block what you don't, ask for the rest.
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13-blue.svg)]()
+
+# AgentGate
+
+**Firewall for AI coding agents — intercept, log, approve every action.**
+
+![dashboard](docs/dashboard.svg)
+
+> **One-line firewall for AI coding agents.** Intercepts every tool call, network request, and human approval — let Claude Code / Cursor / Continue.dev / Aider / GitHub Actions touch what you allow, block what you don't, ask for the rest.
 
 AgentGate sits between your AI coding agent and the rest of your system. It ships as three small pieces you wire up in 60 seconds:
 

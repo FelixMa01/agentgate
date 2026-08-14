@@ -269,7 +269,58 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/events/stream":
             self._sse_stream()
             return
+        if parsed.path == "/api/events":
+            self._api_events(parsed)
+            return
         self._send(404, "text/plain", b"not found\n")
+
+    def _api_events(self, parsed) -> None:
+        """GET /api/events?action=deny&source=claude-code&since=ts&limit=50.
+
+        Returns recent events filtered by action / source / timestamp.
+        """
+        from urllib.parse import parse_qs
+        q = parse_qs(parsed.query)
+        action = (q.get("action") or [None])[0]
+        source = (q.get("source") or [None])[0]
+        since = (q.get("since") or [None])[0]
+        limit = int((q.get("limit") or ["50"])[0])
+
+        sql = "SELECT id, ts, source, agent, action, rule_id, rule_name, reason, event_json FROM events WHERE 1=1"
+        params: list = []
+        if action:
+            sql += " AND action = ?"
+            params.append(action)
+        if source:
+            sql += " AND source = ?"
+            params.append(source)
+        if since:
+            try:
+                sql += " AND ts >= ?"
+                params.append(float(since))
+            except ValueError:
+                pass
+        sql += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(sql, params).fetchall()
+        out = []
+        for r in rows:
+            ev = json.loads(r["event_json"]) if r["event_json"] else {}
+            out.append({
+                "id": r["id"],
+                "ts": r["ts"],
+                "source": r["source"],
+                "agent": r["agent"],
+                "action": str(r["action"]),
+                "rule_id": r["rule_id"],
+                "rule_name": r["rule_name"],
+                "reason": r["reason"],
+                "event": ev,
+            })
+        self._send(200, "application/json", json.dumps(out).encode())
 
     def _sse_stream(self):
         """Server-Sent Events — push new audit rows in real time.

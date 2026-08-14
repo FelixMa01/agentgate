@@ -86,19 +86,10 @@ def test_notify_file_fallback(monkeypatch, tmp_path):
     monkeypatch.delenv("AGENTGATE_TELEGRAM_CHAT_ID", raising=False)
     monkeypatch.delenv("AGENTGATE_SLACK_WEBHOOK", raising=False)
     monkeypatch.setenv("AGENTGATE_APPROVAL_HOST", "127.0.0.1:8765")
-    # Redirect the file path
+    # Redirect the fallback file path to a tmp_path file.
     target = tmp_path / "asks.jsonl"
-    with patch("agentgate.notify.Path") as MP:
-        MP.return_value.parent.mkdir = MagicMock()
-        # open is a builtin so we patch the open() in the notify module.
-        import builtins
-        original_open = builtins.open
-        def fake_open(path, *args, **kwargs):
-            if str(path) == "/tmp/agentgate-asks.jsonl":
-                return original_open(target, *args, **kwargs)
-            return original_open(path, *args, **kwargs)
-        with patch("builtins.open", side_effect=fake_open):
-            status = notify_ask("tok", "Bash", {"command": "ls"}, "rule", "reason")
+    monkeypatch.setenv("AGENTGATE_ASK_FALLBACK", str(target))
+    status = notify_ask("tok", "Bash", {"command": "ls"}, "rule", "reason")
     assert "file" in status
     lines = target.read_text().strip().split("\n")
     assert len(lines) == 1

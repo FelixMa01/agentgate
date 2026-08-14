@@ -41,12 +41,13 @@ def _db_path() -> Path:
     """Where to keep the shared approvals DB.
 
     Honors AGENTGATE_DB env var (same DB the audit lives in), with a sidecar
-    `approvals` table. Falls back to /tmp/agentgate-approvals.db.
+    `approvals` table. Falls back to the per-user temp dir.
     """
     db = os.environ.get("AGENTGATE_DB")
     if db:
         return Path(db)
-    return Path("/tmp/agentgate-approvals.db")
+    import tempfile
+    return Path(tempfile.gettempdir()) / "agentgate-approvals.db"
 
 
 @dataclass

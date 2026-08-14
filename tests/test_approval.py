@@ -83,20 +83,18 @@ def test_post_to_slack_bad_url():
 
 
 def test_notify_ask_falls_back_to_file(tmp_path, monkeypatch):
-    """With no AGENTGATE_SLACK_WEBHOOK set, notify_ask writes to /tmp/agentgate-asks.jsonl."""
+    """With no AGENTGATE_SLACK_WEBHOOK set, notify_ask writes to AGENTGATE_ASK_FALLBACK."""
     monkeypatch.delenv("AGENTGATE_SLACK_WEBHOOK", raising=False)
-    # The fallback path is hardcoded; ensure parent dir exists (it will).
+    target = tmp_path / "asks.jsonl"
+    monkeypatch.setenv("AGENTGATE_ASK_FALLBACK", str(target))
     status = notify_ask("tk1", "Bash", {"command": "x"}, "r", "why")
     assert status.startswith("file:")
-    # Verify the file contains our payload
     from pathlib import Path
-    f = Path("/tmp/agentgate-asks.jsonl")
+    f = Path(target)
     assert f.exists()
     last_line = f.read_text().strip().splitlines()[-1]
     payload = json.loads(last_line)
     assert "tk1" in json.dumps(payload)
-    # The /tmp/agentgate-asks.jsonl gets reused; clean it for next test
-    f.unlink(missing_ok=True)
 
 
 # ----- Approval HTTP server (in-process) -----

@@ -15,9 +15,10 @@ Falls back to writing the message to a local file if nothing is configured
 from __future__ import annotations
 import json
 import os
+import sys
+import tempfile
 import urllib.request
 import urllib.error
-import urllib.parse
 from pathlib import Path
 from typing import Any
 
@@ -161,11 +162,13 @@ def notify_ask(token: str, tool: str, event: dict, rule_name: str | None,
         return f"slack:{'ok' if ok else msg}"
 
     # File fallback so smoke tests can verify the message was generated.
-    Path("/tmp/agentgate-asks.jsonl").parent.mkdir(parents=True, exist_ok=True)
-    with open("/tmp/agentgate-asks.jsonl", "a") as f:
+    fallback = Path(os.environ.get("AGENTGATE_ASK_FALLBACK")
+                    or (Path(tempfile.gettempdir()) / "agentgate-asks.jsonl"))
+    fallback.parent.mkdir(parents=True, exist_ok=True)
+    with open(fallback, "a") as f:
         f.write(json.dumps({
             "token": token, "tool": tool, "event": event,
             "rule_name": rule_name, "reason": reason,
             "approval_url": f"{scheme}://{approval_host}/approve/{token}",
         }) + "\n")
-    return "file:/tmp/agentgate-asks.jsonl"
+    return f"file:{fallback}"

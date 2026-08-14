@@ -1,7 +1,7 @@
 [project]
 name = "agentgate-firewall"
-version = "0.5.0"
-description = "Firewall for AI coding agents — intercept, log, approve every action."
+version = "0.6.0"
+description = "Firewall for AI coding agents \u2014 intercept, log, approve every action. Works with Claude Code, Cursor, Continue.dev, Aider, and GitHub Actions."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]

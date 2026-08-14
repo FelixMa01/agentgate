@@ -81,10 +81,41 @@ The whole adapter is usually ~50 lines + tests.
 
 ## Releasing
 
-1. Bump version in `pyproject.toml` and `src/agentgate/__init__.py`.
-2. `uv build` — produces `dist/agentgate_firewall-X.Y.Z-{whl,tar.gz}`.
-3. `UV_PUBLISH_TOKEN=*** uv publish dist/agentgate_firewall-X.Y.Z-py3-none-any.whl dist/agentgate_firewall-X.Y.Z.tar.gz`.
-4. Tag + GitHub release: `gh release create vX.Y.Z --repo FelixMa01/agentgate --notes-file …`.
+1. **Bump version** in both `pyproject.toml` and `src/agentgate/__init__.py` (must match).
+2. **Run all checks locally**:
+   ```bash
+   make verify    # 10-step e2e
+   make test      # 83+ unit tests
+   ```
+3. **Build**:
+   ```bash
+   make build     # produces dist/agentgate_firewall-X.Y.Z-py3-none-any.whl + .tar.gz
+   ```
+4. **Upload to PyPI** (Test PyPI first if unsure):
+   ```bash
+   export UV_PUBLISH_TOKEN=pypi-***
+   make publish   # or: uv publish dist/agentgate_firewall-X.Y.Z-*
+   ```
+   PyPI token: https://pypi.org/manage/account/token/ — scope it to the
+   `agentgate-firewall` project. Revoke after publishing.
+5. **Verify install** in a fresh venv:
+   ```bash
+   uv venv /tmp/check && /tmp/check/bin/pip install agentgate-firewall
+   /tmp/check/bin/agentgate --version    # should print new version
+   ```
+6. **Tag + GitHub release**:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   gh release create vX.Y.Z --title "..." --notes-file CHANGELOG.md
+   ```
+7. **Update `CHANGELOG.md`** with the new version's section before step 3.
+
+### Why a separate PyPI name (`agentgate-firewall`)
+
+The plain `agentgate` PyPI package was already taken (a different multi-agent
+framework). We use `agentgate-firewall` on PyPI but the CLI command stays
+`agentgate`.
 
 ## License
 

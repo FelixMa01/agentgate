@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" font-family="-apple-system,system-ui,sans-serif">
+  <!-- Background -->
+  <rect width="720" height="420" fill="#0e1117"/>
+  <!-- Header -->
+  <text x="24" y="32" fill="#e6edf3" font-size="16" font-weight="600">🛡️ AgentGate</text>
+  <text x="125" y="32" fill="#7d8590" font-size="11">v0.5.0</text>
+  <text x="24" y="50" fill="#7d8590" font-size="11">Audit dashboard · last updated 14:32 · auto-refresh every 5s</text>
+
+  <!-- Cards -->
+  <g font-size="22" font-weight="600">
+    <rect x="24" y="72" width="156" height="78" fill="#161b22" stroke="#30363d" rx="6"/>
+    <text x="40" y="106" fill="#e6edf3">4</text>
+    <text x="40" y="132" fill="#7d8590" font-size="9" font-weight="400">TOTAL</text>
+
+    <rect x="192" y="72" width="156" height="78" fill="#161b22" stroke="#30363d" rx="6"/>
+    <text x="208" y="106" fill="#3fb950">2</text>
+    <text x="208" y="132" fill="#7d8590" font-size="9" font-weight="400">ALLOW</text>
+
+    <rect x="360" y="72" width="156" height="78" fill="#161b22" stroke="#30363d" rx="6"/>
+    <text x="376" y="106" fill="#f85149">2</text>
+    <text x="376" y="132" fill="#7d8590" font-size="9" font-weight="400">DENY</text>
+
+    <rect x="528" y="72" width="156" height="78" fill="#161b22" stroke="#30363d" rx="6"/>
+    <text x="544" y="106" fill="#d29922">0</text>
+    <text x="544" y="132" fill="#7d8590" font-size="9" font-weight="400">ASK</text>
+  </g>
+
+  <!-- Decisions over last 24h chart -->
+  <text x="24" y="180" fill="#7d8590" font-size="10" font-weight="600">DECISIONS OVER THE LAST 24 HOURS</text>
+  <rect x="24" y="188" width="672" height="160" fill="#161b22" stroke="#30363d" rx="6"/>
+  <g>
+    <!-- Bars: deny (red) at hour 10, allow (green) at hour 14, deny (red) at hour 22 -->
+    <rect x="80"  y="320" width="14" height="20" fill="#f85149"/>
+    <rect x="200" y="300" width="14" height="40" fill="#f85149"/>
+    <rect x="320" y="280" width="14" height="60" fill="#3fb950"/>
+    <rect x="440" y="320" width="14" height="20" fill="#3fb950"/>
+    <rect x="560" y="280" width="14" height="60" fill="#f85149"/>
+  </g>
+  <line x1="24" y1="340" x2="696" y2="340" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Top denied rules -->
+  <text x="24" y="370" fill="#7d8590" font-size="10" font-weight="600">TOP DENIED RULES</text>
+  <rect x="24" y="378" width="330" height="32" fill="#161b22" stroke="#30363d" rx="6"/>
+  <text x="36" y="398" fill="#7d8590" font-size="11">deny-rm-rf</text>
+  <rect x="130" y="386" width="160" height="16" fill="#f85149" rx="2"/>
+  <text x="296" y="398" fill="#7d8590" font-size="10">2</text>
+</svg>

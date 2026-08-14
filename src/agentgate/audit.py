@@ -88,6 +88,24 @@ class Audit:
         with self._connect() as conn:
             return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
+    def by_source(self) -> dict[str, int]:
+        """Count events grouped by source (claude-code, proxy, manual, etc.)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(source, 'unknown') AS source, COUNT(*) AS n "
+                "FROM events GROUP BY source ORDER BY n DESC"
+            ).fetchall()
+        return {r["source"]: r["n"] for r in rows}
+
+    def by_rule(self) -> dict[str, int]:
+        """Count events grouped by rule_id."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT COALESCE(rule_id, '(default)') AS rule_id, COUNT(*) AS n "
+                "FROM events GROUP BY rule_id ORDER BY n DESC"
+            ).fetchall()
+        return {r["rule_id"]: r["n"] for r in rows}
+
     def since(self, after_id: int = 0, limit: int = 500) -> list[dict]:
         """Return events with id > after_id, ordered ascending."""
         with self._connect() as conn:

@@ -31,13 +31,15 @@ from .cli_hosted import pull_policy, push_events  # noqa: E402
 from .cli_install_continue_hook import install_continue_hook  # noqa: E402  # noqa: E402
 from .cli_proxy import proxy  # noqa: E402
 from .cli_approval_server import approval_server  # noqa: E402
-from .cli_ask_test import ask_test  # noqa: E402
+from .cli_ask_test import ask_test
+from .cli_doctor import doctor  # noqa: E402
+from .cli_lint import lint  # noqa: E402  # noqa: E402
 from .cli_dashboard import dashboard  # noqa: E402
 from .cli_replay import replay  # noqa: E402
 
 for _cmd in (
     init, eval, audit, stats, validate, install_hook, uninstall_hook,
-    install_cursor_hook, install_continue_hook, pull_policy, push_events, proxy, approval_server, ask_test, dashboard, replay,
+    install_cursor_hook, install_continue_hook, pull_policy, push_events, proxy, approval_server, ask_test, dashboard, replay, doctor, lint,
 ):
     main.add_command(_cmd)
 
