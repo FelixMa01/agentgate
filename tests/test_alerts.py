@@ -1,16 +1,13 @@
 """Tests for the alerts CLI and Audit.counts_per_bucket / since_within."""
 import json
-import os
-import sqlite3
-import subprocess
-import sys
-import tempfile
 import time
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
 from agentgate.audit import Audit
+from agentgate.cli.__init__ import main
 from agentgate.policy import Action
 
 
@@ -59,13 +56,10 @@ def test_alerts_cli_no_match(db_path, tmp_path):
         "    action: deny\n"
         "    message: 'count={{count}}'\n"
     )
-    r = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "alerts",
-         "--db", str(db_path), "--rules", str(rules)],
-        capture_output=True, text=True, cwd="/Users/macbookm4air32g/projects/agentgate",
-    )
-    assert r.returncode == 0
-    assert "0 alerts fired" in r.stdout
+    runner = CliRunner()
+    result = runner.invoke(main, ["alerts", "--db", str(db_path), "--rules", str(rules)])
+    assert result.exit_code == 0, result.output
+    assert "0 alerts fired" in result.output
 
 
 def test_alerts_cli_fires(db_path, tmp_path):
@@ -78,11 +72,8 @@ def test_alerts_cli_fires(db_path, tmp_path):
         "    action: deny\n"
         "    message: 'denies={{count}}'\n"
     )
-    r = subprocess.run(
-        [sys.executable, "-m", "agentgate.cli.__init__", "alerts",
-         "--db", str(db_path), "--rules", str(rules)],
-        capture_output=True, text=True, cwd="/Users/macbookm4air32g/projects/agentgate",
-    )
-    assert r.returncode == 0
-    assert "1 alerts fired" in r.stdout
-    assert "denies=3" in r.stdout
+    runner = CliRunner()
+    result = runner.invoke(main, ["alerts", "--db", str(db_path), "--rules", str(rules)])
+    assert result.exit_code == 0, result.output
+    assert "1 alerts fired" in result.output
+    assert "denies=3" in result.output

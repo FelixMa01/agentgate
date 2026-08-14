@@ -2,14 +2,13 @@
 import json
 import os
 import socket
-import subprocess
-import sys
 import time
 import urllib.request
 
 import pytest
 
 from agentgate.audit import Audit
+from agentgate.cli.__init__ import main
 from agentgate.policy import Action
 
 
@@ -26,34 +25,54 @@ def db_path(tmp_path):
     p = tmp_path / "audit.db"
     a = Audit(str(p))
     for i in range(3):
-        a.record(source="manual", action=Action("deny"), rule_id=f"r{i}",
-                 rule_name=f"r{i}", event={"tool": "Bash", "i": i})
+        a.record(
+            source="manual", action=Action("deny"), rule_id=f"r{i}",
+            rule_name=f"r{i}", event={"tool": "Bash", "i": i},
+        )
     return p
 
 
 @pytest.fixture
 def server(db_path):
+    """Start dashboard server in a background thread via click CliRunner.invoke."""
+    import threading
+    from click.testing import CliRunner
+
     port = _free_port()
-    env = os.environ.copy()
-    p = subprocess.Popen(
-        [sys.executable, "-m", "agentgate.cli.__init__", "dashboard",
-         "--db", str(db_path), "--port", str(port), "--host", "127.0.0.1"],
-        cwd="/Users/macbookm4air32g/projects/agentgate",
-        env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
-    for _ in range(30):
+    url = f"http://127.0.0.1:{port}"
+
+    started = threading.Event()
+    stop = threading.Event()
+
+    def run():
+        runner = CliRunner()
+        # invoke is blocking — but CliRunner supports standalone_mode=False
+        # via ctx.invoke. Easier: spawn process? No, CliRunner cannot background.
+        # Workaround: invoke dashboard in a thread with standalone_mode=False
+        # won't run the server either. Use threading.Thread with the actual module:
+        from agentgate.cli.cli_dashboard import dashboard
+        from click.testing import CliRunner as _R
+        runner = _R()
         try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/api/stats", timeout=1).read()
+            runner.invoke(
+                dashboard,
+                ["--db", str(db_path), "--port", str(port), "--host", "127.0.0.1"],
+                catch_exceptions=False,
+            )
+        except SystemExit:
+            pass
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    # wait for ready
+    for _ in range(40):
+        try:
+            urllib.request.urlopen(url + "/api/stats", timeout=0.5).read()
             break
         except Exception:
             time.sleep(0.2)
-    yield f"http://127.0.0.1:{port}"
-    p.terminate()
-    try:
-        p.wait(timeout=2)
-    except subprocess.TimeoutExpired:
-        p.kill()
+    yield url
+    stop.set()
 
 
 def test_dashboard_index_html(server):
