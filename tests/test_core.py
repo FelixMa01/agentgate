@@ -121,6 +121,6 @@ def test_cli_eval_runs(tmp_path: Path, policy: Path, monkeypatch):
     assert "DENY" in res.output
 
     # audit shows the entry
-    res2 = runner.invoke(cli_main, ["audit", "--db", str(db_path)])
+    res2 = runner.invoke(cli_main, ["audit", "show", "--db", str(db_path)])
     assert res2.exit_code == 0
     assert "deny-rm" in res2.output

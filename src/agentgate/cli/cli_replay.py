@@ -7,7 +7,7 @@ import json
 import click
 
 from ..audit import Audit
-from ..policy import load_policy
+from ..policy import event_provenance, load_policy
 from . import console
 from ._common import resolve_policy
 
@@ -35,6 +35,16 @@ def replay(db: str, audit_id: int, policy: str, as_json: bool) -> None:
         raise click.ClickException(f"audit id {audit_id} not found")
     pol = load_policy(str(resolve_policy(policy)))
     new_action, new_rule = pol.evaluate(row["event"])
+
+    # Provenance check — detect replay attacks (event payload tampered).
+    old_prov = (row.get("event") or {}).get("_provenance")
+    current_prov = event_provenance(row["event"], row.get("rule_id"))
+    provenance_ok = (
+        old_prov is None  # legacy event without provenance
+        or old_prov.get("event_sha256") == current_prov["event_sha256"]
+    )
+    provenance_tampered = old_prov is not None and not provenance_ok
+
     old_action = row["action"]
     changed = new_action != old_action
     if as_json:
@@ -49,6 +59,10 @@ def replay(db: str, audit_id: int, policy: str, as_json: bool) -> None:
                     "changed": changed,
                     "old_rule_id": row.get("rule_id"),
                     "new_rule_id": new_rule.id if new_rule else None,
+                    "provenance_ok": provenance_ok,
+                    "provenance_tampered": provenance_tampered,
+                    "expected_sha256": current_prov["event_sha256"],
+                    "recorded_sha256": (old_prov or {}).get("event_sha256"),
                 }
             )
         )
@@ -60,6 +74,10 @@ def replay(db: str, audit_id: int, policy: str, as_json: bool) -> None:
     console.print(
         f"  [{color}]{icon} {new_action.value.upper()}[/] ({new_rule.id if new_rule else 'none'})"
     )
+    if provenance_tampered:
+        console.print("  [bold red]PROVENANCE MISMATCH[/] — event payload differs from recorded hash")
+        console.print(f"    recorded: {(old_prov or {}).get('event_sha256', '?')[:16]}...")
+        console.print(f"    current:  {current_prov['event_sha256'][:16]}...")
     if changed:
         console.print("  [yellow]\u26a0 decision CHANGED under the new policy[/]")
     else:

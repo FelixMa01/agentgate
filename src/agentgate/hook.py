@@ -19,7 +19,7 @@ from pathlib import Path
 from .approval import STORE
 from .audit import Audit
 from .notify import notify_ask
-from .policy import Action, load_policy
+from .policy import Action, event_provenance, load_policy
 
 # Fields we propagate into the audit log if present.
 EXTRA_FIELDS = ("session_id", "cwd", "agent_id", "agent_type")
@@ -104,6 +104,7 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
 
     if action == Action.ASK:
         ask = STORE.request(event, tool, rule.id if rule else None)
+        prov = event_provenance(event, rule.id if rule else None)
         try:
             status = notify_ask(
                 ask.token,
@@ -118,7 +119,7 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
             source=source,
             agent=agent,
             action=Action.ASK,
-            event={**event, "_ask_token": ask.token, "_notify": status},
+            event={**event, "_ask_token": ask.token, "_notify": status, "_provenance": prov},
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
             reason=reason,
@@ -136,7 +137,7 @@ def evaluate_event(event: dict, source: str = "claude-code") -> tuple[Action, st
             source=source,
             agent=agent,
             action=action,
-            event={**event, "_ask_token": ask.token, "_resolved": decision_str},
+            event={**event, "_ask_token": ask.token, "_resolved": decision_str, "_provenance": prov},
             rule_id=rule.id if rule else None,
             rule_name=rule.name if rule else None,
             reason=(reason + " " + timeout_note).strip(),

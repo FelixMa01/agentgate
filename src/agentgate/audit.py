@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS events (
     rule_id TEXT,
     rule_name TEXT,
     event_json TEXT NOT NULL,     -- raw event payload
-    reason TEXT
+    reason TEXT,
+    chain_hash TEXT,              -- SHA-256 of (prev_chain_hash + this row) — tamper-evident chain
+    prev_chain_hash TEXT          -- previous event's chain_hash (NULL for first row)
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_action ON events(action);
@@ -58,24 +60,71 @@ class Audit:
         agent: str | None = None,
         reason: str | None = None,
     ) -> int:
+        import hashlib
+        ts = time.time()
         with self._lock, self._connect() as conn:
+            # Get previous hash for the chain
+            prev = conn.execute(
+                "SELECT chain_hash FROM events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            prev_hash = prev[0] if prev else None
+
+            event_json = json.dumps(event, default=str)
+            # Compute this row's hash (chain_hash) — binds prev + own content
+            row_data = f"{prev_hash or ''}|{ts}|{source}|{agent or ''}|{action.value}|{rule_id or ''}|{event_json}|{reason or ''}"
+            chain_hash = hashlib.sha256(row_data.encode("utf-8")).hexdigest()
+
             cur = conn.execute(
                 """INSERT INTO events
-                   (ts, source, agent, action, rule_id, rule_name, event_json, reason)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (ts, source, agent, action, rule_id, rule_name, event_json, reason, chain_hash, prev_chain_hash)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    time.time(),
+                    ts,
                     source,
                     agent,
                     action.value,
                     rule_id,
                     rule_name,
-                    json.dumps(event, default=str),
+                    event_json,
                     reason,
+                    chain_hash,
+                    prev_hash,
                 ),
             )
             assert cur.lastrowid is not None
             return cur.lastrowid
+
+    def verify_chain(self) -> dict:
+        """Verify the hash chain. Returns a summary dict.
+
+        - valid: True if chain is intact
+        - checked: number of rows checked
+        - first_broken_id: id of first row whose hash doesn't match (None if OK)
+        """
+        import hashlib
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, ts, source, agent, action, rule_id, event_json, reason, chain_hash, prev_chain_hash "
+                "FROM events ORDER BY id ASC"
+            ).fetchall()
+            prev_hash = None
+            first_broken = None
+            checked = 0
+            for r in rows:
+                row_data = f"{prev_hash or ''}|{r['ts']}|{r['source']}|{r['agent'] or ''}|{r['action']}|{r['rule_id'] or ''}|{r['event_json']}|{r['reason'] or ''}"
+                expected = hashlib.sha256(row_data.encode("utf-8")).hexdigest()
+                checked += 1
+                if expected != r["chain_hash"] or r["prev_chain_hash"] != prev_hash:
+                    if first_broken is None:
+                        first_broken = r["id"]
+                    # Continue to count broken rows
+                prev_hash = r["chain_hash"]
+            return {
+                "valid": first_broken is None,
+                "checked": checked,
+                "first_broken_id": first_broken,
+                "total_rows": len(rows),
+            }
 
     def recent(self, limit: int = 50, action: Action | None = None) -> list[dict]:
         sql = "SELECT * FROM events"
