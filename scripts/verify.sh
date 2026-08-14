@@ -136,4 +136,47 @@ else
 fi
 
 echo
-echo "All 8 steps verified ✓"
+
+# 9. Continue.dev hook — same format as Claude Code
+step=$((step+1))
+TMPCONT=$(mktemp -d)
+cat > "$TMPCONT/policy.yaml" <<EOF
+version: 1
+default: allow
+rules:
+  - id: deny-rm
+    match: {tool: Bash, command: "rm -rf /*"}
+    action: deny
+EOF
+cat > "$TMPCONT/payload.json" <<EOF
+{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"rm -rf /etc"}}
+EOF
+CONT_OUT=$(AGENTGATE_POLICY="$TMPCONT/policy.yaml" AGENTGATE_DB="$TMPCONT/audit.db" \
+  AGENTGATE_PAYLOAD_FILE="$TMPCONT/payload.json" \
+  .venv/bin/python -m agentgate.continue_hook 2>/dev/null)
+rm -rf "$TMPCONT"
+echo "$CONT_OUT" | grep -q '"deny"' && ok "continue hook install + deny" || { echo "got: $CONT_OUT"; fail $step; }
+
+# 10. GitHub Actions adapter — annotate a fake diff
+step=$((step+1))
+TMPA=$(mktemp -d)
+# Provide a real policy file so the actions adapter doesn't warn.
+cat > "$TMPA/policy.yaml" <<'POL'
+version: 1
+default: allow
+rules: []
+POL
+(
+  cd "$TMPA"
+  git init -q && git config user.email t@t && git config user.name T
+  echo "ok" > a.py && git add a.py && git commit -q -m init
+  echo "diff content" > b.py
+  AGENTGATE_POLICY="$TMPA/policy.yaml" AGENTGATE_DB="$TMPA/audit.db" \
+    AGENTGATE_WORKSPACE="$TMPA" \
+    "$ROOT/.venv/bin/python" -m agentgate.actions_annotate > /tmp/actions.log 2>&1 || true
+)
+grep -q "AgentGate reviewed" /tmp/actions.log && ok "actions annotate (CI workflow commands)" || { echo "log: $(cat /tmp/actions.log)"; fail $step; }
+rm -rf "$TMPA" /tmp/actions.log
+
+echo
+echo "All 10 steps verified ✓"
