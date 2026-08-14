@@ -1,0 +1,38 @@
+version: 1
+default: allow
+
+rules:
+  - id: deny-rm-rf
+    name: Block destructive rm
+    match:
+      tool: Bash
+      command: "rm -rf /*"
+    action: deny
+    reason: "Mass deletion outside repo"
+
+  - id: deny-secrets-read
+    name: Block reading secrets
+    match:
+      tool: Read
+      file_glob: ["*.pem", ".env*", "*id_rsa*"]
+    action: deny
+    reason: "Secret files are off-limits"
+
+  - id: ask-network-exfil
+    name: Require approval for new domains
+    match:
+      tool: Bash
+      command: ["curl *", "wget *", "http*"]
+    action: ask
+    reason: "Outbound network from agent"
+
+network:
+  allowed_domains:
+    - github.com
+    - "*.githubusercontent.com"
+    - pypi.org
+    - openai.com
+    - anthropic.com
+  denied_domains:
+    - pastebin.com
+  require_https: true
