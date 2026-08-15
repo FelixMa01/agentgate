@@ -414,6 +414,15 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == "/api/asks/pending":
             self._api_asks_pending(parsed)
             return
+        if parsed.path == "/api/policy/lint":
+            self._api_policy_lint(parsed)
+            return
+        if parsed.path == "/api/policy/save":
+            self._api_policy_save(parsed)
+            return
+        if parsed.path == "/editor":
+            self._editor_page()
+            return
         if parsed.path == "/metrics":
             self._send(200, "text/plain; version=0.0.4", self._prometheus_metrics().encode())
             return
@@ -608,6 +617,53 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             raise
+
+    def _api_policy_lint(self, parsed) -> None:
+        """POST /api/policy/lint — body is policy JSON, returns lint findings."""
+        length = int(parsed.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            policy = json.loads(raw)
+            from .lint import lint_policy
+            findings = [f.to_dict() for f in lint_policy(policy)]
+        except Exception as exc:
+            self._send(400, "application/json",
+                       json.dumps({"error": str(exc)}).encode())
+            return
+        self._send(200, "application/json",
+                   json.dumps(findings).encode())
+
+    def _api_policy_save(self, parsed) -> None:
+        """POST /api/policy/save — body is policy JSON; writes to AGENTGATE_POLICY."""
+        import os
+        path = os.environ.get("AGENTGATE_POLICY", "agentgate.yaml")
+        length = int(parsed.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            policy = json.loads(raw)
+            import yaml
+            text = yaml.safe_dump(policy, sort_keys=False)
+            with open(path, "w") as f:
+                f.write(text)
+            self._send(200, "application/json",
+                       json.dumps({"ok": True, "path": path}).encode())
+        except Exception as exc:
+            self._send(500, "application/json",
+                       json.dumps({"ok": False, "error": str(exc)}).encode())
+
+    def _editor_page(self) -> None:
+        """GET /editor — embedded policy editor."""
+        from .editor import editor_assets
+        assets = editor_assets()
+        html = (
+            "<!DOCTYPE html><html><head><title>AgentGate Policy Editor</title>"
+            "<meta charset=\"utf-8\"></head><body>"
+            f"{assets['html']}"
+            f"<script>{assets['js']}</script>"
+            "</body></html>"
+        )
+        self._send(200, "text/html; charset=utf-8", html.encode())
+
     def _send(self, code: int, ctype: str, body: bytes) -> None:
         self.send_response(code)
         self.send_header("Content-Type", ctype)

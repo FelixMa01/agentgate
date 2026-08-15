@@ -1,0 +1,54 @@
+# AgentGate — docker-compose stack for hosted proxy + dashboard + approval server
+#
+# Usage:
+#   docker compose up -d
+#   curl -x http://localhost:8080 http://example.com  # through proxy
+#   open http://localhost:8081                       # dashboard
+#
+# Note: in this compose file AgentGate runs in "hosted" mode — it serves
+# as an outbound HTTP proxy that any container / process can point at.
+# Hook-based interception (Claude Code / Cursor) still runs natively on
+# the host, not in this container.
+
+version: "3.9"
+
+services:
+  agentgate:
+    build: .
+    image: agentgate:0.14.0
+    container_name: agentgate
+    restart: unless-stopped
+    environment:
+      AGENTGATE_POLICY: /policies/policy.yaml
+      AGENTGATE_DB: /data/audit.db
+      AGENTGATE_MODE: enforce
+      AGENTGATE_HOST: 0.0.0.0
+      AGENTGATE_PROXY_PORT: "8080"
+      AGENTGATE_DASHBOARD_PORT: "8081"
+      AGENTGATE_TELEGRAM_BOT_TOKEN: ${AGENTGATE_TELEGRAM_BOT_TOKEN:-}
+      AGENTGATE_SLACK_WEBHOOK: ${AGENTGATE_SLACK_WEBHOOK:-}
+    ports:
+      - "8080:8080"   # HTTP proxy
+      - "8081:8081"   # dashboard + approval API
+    volumes:
+      - ./policies:/policies:ro
+      - ./data:/data
+      - agentgate-config:/home/agentgate/.agentgate
+    healthcheck:
+      test: ["CMD", "agentgate", "doctor"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Optional: example protected service that routes through AgentGate.
+  # Use: docker compose run --rm demo curl -x http://agentgate:8080 ...
+  demo:
+    image: curlimages/curl:8.10.1
+    depends_on:
+      agentgate:
+        condition: service_healthy
+    entrypoint: ["sleep", "infinity"]
+    profiles: ["demo"]
+
+volumes:
+  agentgate-config:

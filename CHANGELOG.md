@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-15
+
+### Added
+- **A2A (Agent-to-Agent) protocol inspector** (`a2a.py` + `agentgate a2a-scan <payload.json>`).
+  Walks an A2A JSON-RPC payload, detects:
+  - **prompt injection** in `message.parts[].text` (10+ markers)
+  - **DLP matches** re-using `DlpScanner` (secrets in message bodies)
+  - **unsafe tool invocations** embedded in messages (rm -rf / curl / fork bomb)
+  - **capability downgrades** in `agentCard` (permissions:[], dangerouslyDisable, etc.)
+  - **unsafe attachment URLs** (DLP on URLs)
+  Returns a list of `A2AFinding` with severity, location path, and evidence.
+- **Homebrew tap** (`packaging/homebrew/agentgate.rb` + README).
+  `brew tap FelixMa01/agentgate && brew install agentgate`.
+- **Dockerfile** — Python 3.12 slim, non-root user, HEALTHCHECK via `agentgate doctor`.
+- **docker-compose.yml** — full stack: proxy :8080, dashboard :8081, volume mount for
+  policies and audit db, env vars for Telegram/Slack webhooks.
+- **Web policy editor** (`editor.py` + dashboard `/editor` route + `/api/policy/{lint,save}`).
+  Single-page editor with rule table, network panel, inline lint findings, save-to-disk.
+  No external JS deps — embedded assets.
+
+### Tests
+- 266 tests passing (was 249, +17).
+- ruff clean, mypy clean.
+
 ## [0.13.1] - 2026-08-15
 
 ### Added

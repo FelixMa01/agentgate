@@ -21,6 +21,7 @@ def main() -> None:
 
 
 # Import subcommand objects (each is a click.Command) and register them.
+from .cli_a2a import a2a_scan
 from .cli_alerts import alerts
 from .cli_approval_server import approval_server
 from .cli_ask_test import ask_test
@@ -61,6 +62,7 @@ for _cmd in (
     scan,
     receipts_verify,
     alerts,
+    a2a_scan,
     stats,
     validate,
     doctor,
