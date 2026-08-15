@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-15
+
+### Added
+- **`Codex CLI hook`** — `agentgate install-codex-hook` wires AgentGate into OpenAI's Codex CLI as a BeforeTool hook. Tool mapping (shell→Bash, apply_patch→Edit) keeps policies portable across agents.
+- **CEL-lite `when` conditions** — rules can now carry a small expression that gates matching on event fields:
+  ```yaml
+  rules:
+    - id: deny-rm-elsewhere
+      match: {tool: Bash, command_regex: 'rm -rf.*'}
+      action: deny
+      when: 'event.cwd != "/srv"'
+  ```
+  Supports `== != in not-in > < >= <=`, `and or not`, parens, literals (`"str"`, numbers, `true/false`, `[...]`).
+- **Per-rule token-bucket rate limiter** — `rate_limit: {capacity: 5, refill_per_sec: 0.1}` lets you throttle noisy rules without bricking the agent. When the bucket is empty, the rule falls through to the next match. DENY rules bypass the limiter (always fire).
+- **Multi-environment policy manager** — `agentgate env add|list|show|use|remove|active` for dev/staging/prod switching. Writes `~/.agentgate/environments.yaml` and sources `~/.agentgate/active.env`.
+- **`agentgate coverage`** — reports dead rules and uncovered tools by replaying your audit log (or a JSONL fixture file) through the current policy. `--fail-under 80` for CI gating.
+- **Discord notify** — `AGENTGATE_DISCORD_WEBHOOK` triggers Discord incoming-webhook notifications; channel precedence is now Telegram > Discord > Slack > file.
+
+### Changed
+- `notify.py`: f-string backslash workarounds for Python 3.12+ (em-dash now constant).
+- `policy.py`: imports cleaned up; CEL evaluator extracted as `evaluate_cel()` / `evaluate_when()`.
+
 ## [0.11.0] - 2026-08-15
 
 ### Added

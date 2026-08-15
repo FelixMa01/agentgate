@@ -26,14 +26,17 @@ from .cli_approval_server import approval_server
 from .cli_ask_test import ask_test
 from .cli_audit import cli_audit
 from .cli_audit_verify import audit_verify
+from .cli_coverage import coverage_cmd as coverage
 from .cli_dashboard import dashboard
 from .cli_detect_agents import detect_agents
 from .cli_diff import diff_cmd
 from .cli_docs import docs
 from .cli_doctor import doctor
+from .cli_env import env_group
 from .cli_eval import eval
 from .cli_hosted import pull_policy, push_events
 from .cli_init import init_cmd as init
+from .cli_install_codex_hook import install_codex_hook
 from .cli_install_continue_hook import install_continue_hook
 from .cli_install_cursor_hook import install_cursor_hook
 from .cli_install_gemini_hook import install_gemini_hook
@@ -50,7 +53,9 @@ from .cli_webhook import webhook
 for _cmd in (
     init,
     eval,
+    env_group,
     cli_audit,
+    coverage,
     alerts,
     stats,
     validate,
@@ -58,6 +63,7 @@ for _cmd in (
     uninstall_hook,
     install_cursor_hook,
     install_continue_hook,
+    install_codex_hook,
     install_gemini_hook,
     pull_policy,
     push_events,

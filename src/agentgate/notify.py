@@ -23,6 +23,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+EM_DASH = "\u2014"
+
 
 def post_to_slack(webhook_url: str, payload: dict[str, Any]) -> tuple[bool, str]:
     """Post a JSON payload to a Slack incoming webhook."""
@@ -54,6 +56,35 @@ def post_to_telegram(bot_token: str, chat_id: str, text: str) -> tuple[bool, str
             if data.get("ok"):
                 return True, "ok"
             return False, f"telegram: {data.get('description', 'unknown')}"
+    except urllib.error.HTTPError as e:
+        return False, f"HTTP {e.code}: {e.reason}"
+    except urllib.error.URLError as e:
+        return False, f"URL error: {e.reason}"
+    except Exception as e:
+        return False, f"error: {e}"
+
+
+def post_to_discord(webhook_url: str, text: str) -> tuple[bool, str]:
+    """Post a plain text message to a Discord incoming webhook.
+
+    Discord's webhook contract accepts either a plain `content` string
+    or an `embeds` array; we use `content` for simplicity (no rich
+    formatting — keep it readable in mobile notifications).
+    """
+    # Discord rejects messages > 2000 chars.
+    if len(text) > 1900:
+        text = text[:1900] + "\u2026 (truncated)"
+    body = json.dumps({"content": text}).encode()
+    req = urllib.request.Request(
+        webhook_url, data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            # Discord returns 204 No Content on success
+            if 200 <= resp.status < 300:
+                return True, "ok"
+            return False, f"HTTP {resp.status}"
     except urllib.error.HTTPError as e:
         return False, f"HTTP {e.code}: {e.reason}"
     except urllib.error.URLError as e:
@@ -113,7 +144,7 @@ def build_ask_message(
                 "fields": [
                     {"type": "mrkdwn", "text": f"*Tool:*\n`{tool}`"},
                     {"type": "mrkdwn", "text": f"*Rule:*\n{rule_name or '(default)'}"},
-                    {"type": "mrkdwn", "text": f"*Reason:*\n{reason or '\u2014'}"},
+                    {"type": "mrkdwn", "text": f"*Reason:*\n{reason or EM_DASH}"},
                 ],
             },
             {
@@ -171,7 +202,7 @@ def build_telegram_message(
         "",
         f"*Tool:* `{e(tool)}`",
         f"*Rule:* {e(rule_name) if rule_name else '(default)'}",
-        f"*Reason:* {e(reason) if reason else '\u2014'}",
+        f"*Reason:* {e(reason) if reason else EM_DASH}",
         "",
         f"*Event:*\n```\n{e(json.dumps(event, indent=2, default=str)[:1000])}\n```",
         "",
@@ -181,6 +212,34 @@ def build_telegram_message(
         f"Token: `{e(token)}`",
     ]
     return "\n".join(lines)
+
+
+def build_plain_message(
+    token: str,
+    tool: str,
+    event: dict,
+    rule_name: str | None,
+    reason: str | None,
+    approval_host: str,
+    scheme: str = "http",
+) -> str:
+    """Build a plain-text message for channels without rich formatting
+    (Discord, generic webhooks). Same content as Telegram, no escapes."""
+    base = f"{scheme}://{approval_host}/approve/{token}"
+    return (
+        f"\U0001f6e1\ufe0f AgentGate — approval requested\n"
+        f"\n"
+        f"Tool:   {tool}\n"
+        f"Rule:   {rule_name or '(default)'}\n"
+        f"Reason: {reason or EM_DASH}\n"
+        f"\n"
+        f"Event:\n{json.dumps(event, indent=2, default=str)[:1000]}\n"
+        f"\n"
+        f"Allow:  {base}?d=allow\n"
+        f"Deny:   {base}?d=deny\n"
+        f"\n"
+        f"Token:  {token}\n"
+    )
 
 
 def notify_ask(
@@ -202,6 +261,13 @@ def notify_ask(
         text = build_telegram_message(token, tool, event, rule_name, reason, approval_host, scheme)
         ok, msg = post_to_telegram(tg_token, tg_chat, text)
         return f"telegram:{'ok' if ok else msg}"
+
+    # Discord second (common in dev communities).
+    discord_url = os.environ.get("AGENTGATE_DISCORD_WEBHOOK")
+    if discord_url:
+        text = build_plain_message(token, tool, event, rule_name, reason, approval_host, scheme)
+        ok, msg = post_to_discord(discord_url, text)
+        return f"discord:{'ok' if ok else msg}"
 
     # Slack fallback.
     webhook = os.environ.get("AGENTGATE_SLACK_WEBHOOK")

@@ -15,6 +15,7 @@ from typing import Any
 import yaml
 
 from . import __version__
+from .rate_limit import RateLimitConfig, RateLimiter
 
 
 class Action(StrEnum):
@@ -70,6 +71,106 @@ def event_provenance(event: dict, rule_id: str | None = None) -> dict:
     }
 
 
+def evaluate_cel(expr: str, event: dict) -> bool:
+    """Evaluate a CEL-lite `when` expression against an event dict.
+
+    Supported grammar (small but covers most "deny rm unless cwd is X" cases):
+
+        when: 'event.cwd == "/srv" and event.tool == "Bash"'
+        when: 'event.session_id in allowlist or event.cwd != "/tmp"'
+        when: 'not event.dry_run'
+        when: 'event.risk_score > 7'
+
+    Operators: ==, !=, in, not-in (written as 'not-in'), >, <, >=, <=
+    Logical: and, or, not, parens
+    Literals: strings ("..."), numbers (123, 1.5), bools (true/false), null,
+              barewords (event.x — looked up on the event dict)
+    """
+    import ast
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"invalid CEL expression {expr!r}: {exc}") from exc
+
+    def _eval(node: ast.AST):
+        if isinstance(node, ast.Expression):
+            return _eval(node.body)
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.List):
+            return [_eval(elt) for elt in node.elts]
+        if isinstance(node, ast.Tuple):
+            return tuple(_eval(elt) for elt in node.elts)
+        if isinstance(node, ast.Name):
+            if node.id == "event":
+                return event
+            return event.get(node.id)
+        if isinstance(node, ast.Attribute):
+            base = _eval(node.value)
+            if isinstance(base, dict):
+                return base.get(node.attr)
+            return None
+        if isinstance(node, ast.BoolOp):
+            if isinstance(node.op, ast.And):
+                return all(_eval(v) for v in node.values)
+            if isinstance(node.op, ast.Or):
+                return any(_eval(v) for v in node.values)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not _eval(node.operand)
+        if isinstance(node, ast.Compare):
+            left = _eval(node.left)
+            for op, comparator in zip(node.ops, node.comparators, strict=False):
+                right = _eval(comparator)
+                ok = (
+                    (isinstance(op, ast.Eq) and left == right) or
+                    (isinstance(op, ast.NotEq) and left != right) or
+                    (isinstance(op, ast.Gt) and _cmp(left, right, lambda a, b: a > b)) or
+                    (isinstance(op, ast.Lt) and _cmp(left, right, lambda a, b: a < b)) or
+                    (isinstance(op, ast.GtE) and _cmp(left, right, lambda a, b: a >= b)) or
+                    (isinstance(op, ast.LtE) and _cmp(left, right, lambda a, b: a <= b)) or
+                    (isinstance(op, ast.In) and _membership(left, right)) or
+                    (isinstance(op, ast.NotIn) and not _membership(left, right))
+                )
+                if not ok:
+                    return False
+                left = right if len(node.ops) > 1 else left
+            return True
+        return False
+
+    return bool(_eval(tree))
+
+
+def evaluate_when(when: str, event: dict) -> bool:
+    """Rule.matches() helper: True if `when` is empty OR evaluates True.
+
+    An empty/missing `when` means no extra constraint, so the rule can
+    fire purely on the match dict. Any non-empty expression must
+    evaluate truthy against the event.
+    """
+    return not when or evaluate_cel(when, event)
+
+
+def _cmp(a, b, op) -> bool:
+    """Numeric-aware compare; returns False on mixed/uncomparable types
+    instead of raising (so `event.foo > 5` with foo='bar' fails closed)."""
+    if a is None or b is None:
+        return False
+    try:
+        return op(a, b)
+    except TypeError:
+        return False
+
+
+def _membership(a, b) -> bool:
+    """`in` check that returns False on non-iterables instead of raising."""
+    if b is None:
+        return False
+    try:
+        return a in b
+    except TypeError:
+        return False
+
+
 @dataclass
 class Rule:
     id: str
@@ -77,6 +178,13 @@ class Rule:
     action: Action
     name: str = ""
     reason: str = ""
+    # Optional CEL-lite condition evaluated against the event dict.
+    # Only supports: `event.<key> ==/!=/in/not-in <literal>`,
+    # `and`/`or`/`not`, and `true`/`false` — anything else raises at load.
+    when: str = ""
+    # Optional token-bucket rate limit. When the bucket is empty, this
+    # rule is skipped (falls through to the next matching rule).
+    rate_limit: RateLimitConfig | None = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -107,7 +215,8 @@ class Rule:
             else:
                 if not self._match_pattern(actual, pattern):
                     return False
-        return True
+        # Optional CEL-lite `when` condition on top of the match patterns.
+        return evaluate_when(self.when, event)
 
     @staticmethod
     def _dig(obj: dict, dotted: str) -> Any:
@@ -157,6 +266,10 @@ class Policy:
 
     # Optional: tool names explicitly allowed even when unknown_tool_action=DENY
     known_tools: set[str] = field(default_factory=set)
+
+    # Per-rule token-bucket rate limiter. Shared across all evaluations in
+    # this Policy instance; reset on PolicyWatcher reload.
+    rate_limiter: RateLimiter = field(default_factory=RateLimiter)
 
     def is_known_tool(self, tool_name: str) -> bool:
         """Check whether `tool_name` appears in any rule's match.
@@ -208,14 +321,21 @@ class Policy:
         # DENY-first semantics: any matching deny rule wins immediately.
         # This prevents an earlier, broader allow/ask rule from silently
         # overriding a more specific deny. Without this, `ask-bash` would
-        # shadow `deny-rm` for `rm -rf /`.
+        # shadow `deny-rm` for `rm -rf /`. Deny rules bypass rate limits —
+        # they should always fire when matched.
         for rule in self.rules:
             if rule.action == Action.DENY and rule.matches(event):
                 return Action.DENY, rule
-        # Then first-match for allow/ask rules.
+        # Then first-match for allow/ask rules, with rate-limit gating.
         for rule in self.rules:
-            if rule.matches(event):
-                return rule.action, rule
+            if not rule.matches(event):
+                continue
+            if rule.rate_limit is not None and not self.rate_limiter.check(
+                rule.id, rule.rate_limit
+            ):
+                # Rate-limit exhausted: skip this rule, fall through.
+                continue
+            return rule.action, rule
         # Fallback: check if the event's tool was even referenced by any rule.
         tool_name = event.get("tool")
         if tool_name and not self.is_known_tool(tool_name) and self.unknown_tool_action is not None:
@@ -360,6 +480,9 @@ def load_policy(path: str | Path) -> Policy:
         # so policies don't have to repeat themselves.
         if "id" not in r2:
             r2["id"] = r2.get("name") or f"rule-{i}"
+        # Parse rate_limit dict into RateLimitConfig; bad shape raises.
+        if "rate_limit" in r2 and isinstance(r2["rate_limit"], dict):
+            r2["rate_limit"] = RateLimitConfig.from_dict(r2["rate_limit"])
         rules.append(Rule(**r2))
     return Policy(
         version=int(raw.get("version", 1)),
