@@ -105,11 +105,13 @@ def build_policy(preset: str, ask_network: bool = True) -> dict[str, Any]:
 @click.command("init")
 @click.option("--preset", type=click.Choice(list(PRESETS)), default=None,
               help="Use a preset without interactive prompts.")
+@click.option("--template", "tpl", default=None,
+              help="Use a named policy template (yolo/enterprise/airgapped/ci-cd/pair-programming).")
 @click.option("--output", "-o", type=click.Path(), default="agentgate.yaml",
               show_default=True, help="Where to write the policy file.")
 @click.option("--force", is_flag=True, help="Overwrite existing policy file.")
 @click.option("--yes", "-y", is_flag=True, help="Accept all defaults (non-interactive).")
-def init_cmd(preset: str | None, output: str, force: bool, yes: bool) -> None:
+def init_cmd(preset: str | None, tpl: str | None, output: str, force: bool, yes: bool) -> None:
     ask_network = True  # default for non-interactive paths
     """Generate a starter policy.yaml."""
     out = Path(output)
@@ -130,6 +132,21 @@ def init_cmd(preset: str | None, output: str, force: bool, yes: bool) -> None:
         ask_network = True
 
     cfg = build_policy(preset, ask_network=ask_network)
+
+    if tpl:
+        from ..templates import render_template
+        cfg_yaml = render_template(tpl, path=str(out))
+        if out.exists() and not force and not _prompt_yes_no(f"{out} exists. Overwrite?", default=False):
+            click.echo("Aborted.")
+            sys.exit(1)
+        out.write_text(cfg_yaml)
+        click.echo(f"Wrote policy to {out} (template: {tpl})")
+        click.echo("")
+        click.echo("Next steps:")
+        click.echo(f"  1. Edit {out} to add your own rules.")
+        click.echo(f"  2. Lint it:  agentgate lint {out}")
+        click.echo(f"  3. Install hooks:  agentgate install-hook --policy {out}")
+        return
 
     if out.exists() and not force and not _prompt_yes_no(f"{out} exists. Overwrite?", default=False):
             click.echo("Aborted.")

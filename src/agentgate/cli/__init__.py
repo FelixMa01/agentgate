@@ -86,7 +86,11 @@ for _cmd in (
     docs,
     policy_group,
 ):
-    main.add_command(_cmd)
+    if hasattr(_cmd, "name"):
+        main.add_command(_cmd)
+    else:
+        # Skip non-click helpers (utility functions, groups without commands).
+        pass
 
 
 if __name__ == "__main__":

@@ -1,0 +1,75 @@
+name: 'agentgate'
+description: 'AgentGate — static security scanner + policy linter for AI coding agents'
+author: 'FelixMa01'
+
+branding:
+  icon: 'shield'
+  color: 'red'
+
+inputs:
+  policy:
+    description: 'Path to policy.yaml'
+    required: false
+    default: 'agentgate.yaml'
+  scan:
+    description: 'Run agentgate scan on configs'
+    required: false
+    default: 'true'
+  lint:
+    description: 'Run agentgate lint on the policy'
+    required: false
+    default: 'true'
+  dlp-samples:
+    description: 'Optional newline-separated URLs/bodies to DLP-scan'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.12'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install agentgate
+      shell: bash
+      run: pip install --upgrade agentgate-firewall
+
+    - name: agentgate doctor
+      shell: bash
+      run: agentgate doctor || true
+
+    - name: agentgate lint
+      if: inputs.lint == 'true'
+      shell: bash
+      run: |
+        if [ -f "${{ inputs.policy }}" ]; then
+          agentgate lint "${{ inputs.policy }}" --strict
+        else
+          echo "::warning::No policy file at ${{ inputs.policy }} — skipping lint"
+        fi
+
+    - name: agentgate scan
+      if: inputs.scan == 'true'
+      shell: bash
+      run: agentgate scan --fail-on critical --json > agentgate-scan.json || true
+
+    - name: Upload scan results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: agentgate-scan
+        path: agentgate-scan.json
+        if-no-files-found: ignore
+
+    - name: Run DLP samples (if any)
+      if: inputs.dlp-samples != ''
+      shell: bash
+      run: |
+        echo "${{ inputs.dlp-samples }}" > /tmp/dlp-samples.txt
+        agentgate scan --dlp-samples /tmp/dlp-samples.txt --json > dlp.json || true

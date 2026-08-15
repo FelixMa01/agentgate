@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-08-15
+
+### Added
+- **`agentgate lint <policy.yaml>`** — static policy linter (`lint.py`). 12 rule classes:
+  bad-action / bad-default / empty-match / unknown-tool / missing-id / duplicate-id /
+  shadowed-rule / catchall-allow / cel-unknown-key / bad-rate-limit[-keys] /
+  network-domain-contradiction / unknown-network-key. Exits 2 on error, 1 on
+  warning under `--strict`. JSON output via `--json-output`.
+- **5 named policy templates** (`templates.py`): `yolo`, `enterprise`, `airgapped`,
+  `ci-cd`, `pair-programming`. Use via `agentgate init --template <name>`.
+- **`agentgate replay <trace.jsonl> <policy.yaml>`** — replay a recorded session
+  of policy events against a new policy; reports divergences. `--strict` exits
+  non-zero on any divergence so it can gate a CI pipeline.
+- **`benchmarks.py`** — 30-vector security benchmark spanning destructive bash,
+  DLP exfil, prompt injection, safe ops, and provider self-calls. Reports
+  accuracy + per-failure details. Run via `python -m agentgate.benchmarks`.
+- **`action.yml`** — GitHub Action composite: installs AgentGate, runs doctor /
+  lint / scan / DLP samples, uploads `agentgate-scan.json` artifact.
+- **`agentgate init --template <name>`** wired in `cli_init.py` to write a
+  ready-to-use policy file from any of the 5 templates.
+
+### Fixed
+- **`cli/__init__.py` `add_command` loop**: now defensive against plain helper
+  functions slipping into the command tuple — pre-existing test-collection
+  errors unblocked.
+- **`agentgate lint`** accepts `-p` flag as alternative to positional arg.
+
+### Tests
+- 249 tests passing (was 228, +21).
+- ruff clean, mypy clean.
+
 ## [0.13.0] - 2026-08-15
 
 ### Added
