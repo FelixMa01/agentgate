@@ -44,7 +44,9 @@ from .cli_install_hook import install_hook, uninstall_hook
 from .cli_lint import lint
 from .cli_mcp import mcp_cmd as mcp
 from .cli_proxy import proxy
+from .cli_receipts_verify import receipts_verify
 from .cli_replay import replay
+from .cli_scan import scan_cmd as scan
 from .cli_stats import stats
 from .cli_test_policy import policy_group
 from .cli_validate import validate
@@ -56,9 +58,12 @@ for _cmd in (
     env_group,
     cli_audit,
     coverage,
+    scan,
+    receipts_verify,
     alerts,
     stats,
     validate,
+    doctor,
     install_hook,
     uninstall_hook,
     install_cursor_hook,

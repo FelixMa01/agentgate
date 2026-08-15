@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS events (
     prev_chain_hash TEXT,         -- previous event's chain_hash (NULL for first row)
     resolved INTEGER DEFAULT 0,   -- 0=pending ask, 1=approved, 2=denied
     resolved_by TEXT,             -- who/what approved/denied
-    resolved_at REAL              -- unix timestamp of resolution
+    resolved_at REAL,             -- unix timestamp of resolution
+    receipt_signature TEXT        -- optional Ed25519 signature over (prev_sig + chain_hash + action + event)
 );
 CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts);
 CREATE INDEX IF NOT EXISTS idx_events_action ON events(action);
@@ -41,6 +42,14 @@ class Audit:
         self._lock = threading.Lock()
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            self._migrate(conn)
+
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        """Backfill columns added in newer releases on existing dbs."""
+        cur = conn.execute("PRAGMA table_info(events)")
+        cols = {row[1] for row in cur.fetchall()}
+        if "receipt_signature" not in cols:
+            conn.execute("ALTER TABLE events ADD COLUMN receipt_signature TEXT")
 
     @contextmanager
     def _connect(self):
@@ -62,25 +71,46 @@ class Audit:
         rule_name: str | None = None,
         agent: str | None = None,
         reason: str | None = None,
+        sign: bool = False,
     ) -> int:
         import hashlib
         ts = time.time()
         with self._lock, self._connect() as conn:
             # Get previous hash for the chain
             prev = conn.execute(
-                "SELECT chain_hash FROM events ORDER BY id DESC LIMIT 1"
+                "SELECT chain_hash, receipt_signature FROM events ORDER BY id DESC LIMIT 1"
             ).fetchone()
             prev_hash = prev[0] if prev else None
+            prev_receipt_sig = prev[1] if prev else None
 
             event_json = json.dumps(event, default=str)
             # Compute this row's hash (chain_hash) — binds prev + own content
             row_data = f"{prev_hash or ''}|{ts}|{source}|{agent or ''}|{action.value}|{rule_id or ''}|{event_json}|{reason or ''}"
             chain_hash = hashlib.sha256(row_data.encode("utf-8")).hexdigest()
 
+            # Optional Ed25519 receipt. Off by default so existing tests
+            # and read paths are unchanged; enable via AGENTGATE_SIGN=1 or
+            # by passing sign=True from the proxy.
+            receipt_sig = None
+            if sign:
+                try:
+                    from .receipts import ReceiptKeyPair, receipt_envelope
+                    kp = ReceiptKeyPair.load_or_create()
+                    env = receipt_envelope(
+                        prev_receipt_signature=prev_receipt_sig,
+                        chain_hash=chain_hash,
+                        action=action.value,
+                        event=event,
+                        keypair=kp,
+                    )
+                    receipt_sig = env["signature"]
+                except Exception:
+                    receipt_sig = None
+
             cur = conn.execute(
                 """INSERT INTO events
-                   (ts, source, agent, action, rule_id, rule_name, event_json, reason, chain_hash, prev_chain_hash)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (ts, source, agent, action, rule_id, rule_name, event_json, reason, chain_hash, prev_chain_hash, receipt_signature)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     ts,
                     source,
@@ -92,6 +122,7 @@ class Audit:
                     reason,
                     chain_hash,
                     prev_hash,
+                    receipt_sig,
                 ),
             )
             assert cur.lastrowid is not None

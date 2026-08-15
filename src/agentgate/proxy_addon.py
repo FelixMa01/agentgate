@@ -54,6 +54,52 @@ class AgentGateAddon:
         decision = evaluate_network(
             url, self.policy.network, default=self.policy.default_action.value
         )
+
+        # DLP + prompt-injection + entropy scan before forwarding.
+        dlp_findings: list = []
+        try:
+            # mitmdump loads this script via importlib so relative imports
+            # of the package break — use absolute + defensive try/except.
+            try:
+                from agentgate.dlp import DlpScanner, DlpSeverity
+            except Exception:
+                from .dlp import DlpScanner, DlpSeverity  # type: ignore
+            scanner = DlpScanner()
+            dlp_findings = scanner.scan(
+                url=url,
+                body=flow.request.raw_content or b"",
+                headers=dict(flow.request.headers.items()),
+            )
+        except Exception:
+            pass
+
+        # If any CRITICAL DLP finding -> deny (catch exfil of secrets).
+        criticals = [f for f in dlp_findings if f.severity == DlpSeverity.CRITICAL]
+        if criticals:
+            from mitmproxy.http import Response
+            summary = ", ".join(f.pattern_name for f in criticals[:3])
+            msg = f"AgentGate: DENY — DLP tripped: {summary}\n".encode()
+            self.audit.record(
+                source="network",
+                agent="mitmproxy",
+                action=Action.DENY,
+                event={
+                    "url": url,
+                    "method": flow.request.method,
+                    "host": flow.request.host,
+                    "dlp_findings": [f.to_dict() for f in dlp_findings],
+                },
+                rule_id="dlp-" + criticals[0].pattern_name.lower().replace(" ", "-"),
+                rule_name=f"DLP {criticals[0].pattern_name}",
+                reason=f"DLP scan detected {len(criticals)} critical finding(s)",
+            )
+            flow.response = Response.make(
+                403,
+                msg,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
+            return
+
         self.audit.record(
             source="network",
             agent="mitmproxy",
@@ -65,6 +111,7 @@ class AgentGateAddon:
                 "method": flow.request.method,
                 "host": flow.request.host,
                 "matched": decision.matched_rule,
+                "dlp_findings": [f.to_dict() for f in dlp_findings] if dlp_findings else None,
             },
             rule_id=decision.matched_rule,
             rule_name=f"Network {decision.action}",

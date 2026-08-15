@@ -1,84 +1,68 @@
-"""`agentgate doctor` - check Python version, deps, optional tools."""
+"""`agentgate doctor` — quick health check + setup recommendations."""
+
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
 
 import click
 
-from .. import __version__
+from . import console
+
+_HOME = Path.home()
 
 
-@click.command()
-@click.option("--quiet", "-q", is_flag=True, help="Suppress OK messages.")
-def doctor(quiet: bool) -> None:
-    """Diagnose your AgentGate installation.
+_CHECKS = [
+    # (id, description, check_fn -> (passed: bool, detail: str))
+    ("claude-installed", "Claude Code CLI on PATH",
+     lambda: shutil.which("claude") is not None),
+    ("claude-dir", "~/.claude directory exists",
+     lambda: (_HOME / ".claude").exists()),
+    ("node", "Node.js >= 18 (for Cursor/Continue)",
+     lambda: shutil.which("node") is not None),
+    ("docker", "Docker (for MCP isolation)", lambda: shutil.which("docker") is not None),
+    ("gnupg", "GnuPG (for signing audit receipts)", lambda: shutil.which("gpg") is not None),
+    ("agentgate-cfg", "AgentGate config present",
+     lambda: any((_HOME / p).exists() for p in [".agentgate.yaml", ".agentgate.yml"])
+     or os.environ.get("AGENTGATE_POLICY") is not None),
+    ("agentgate-home", "~/.agentgate writable",
+     lambda: _mkdir_ok(_HOME / ".agentgate")),
+]
 
-    Checks Python version, dependencies, optional tools (mitmdump, git),
-    Slack/Telegram config, and AgentGate database state.
-    """
-    click.echo(f"AgentGate v{__version__} - doctor")
-    click.echo()
 
-    # Python version
-    py = sys.version_info
-    py_ok = py >= (3, 12)
-    _print_check("python", f"{py.major}.{py.minor}.{py.micro}", py_ok, quiet)
+def _mkdir_ok(p: Path) -> bool:
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        return p.is_dir()
+    except Exception:
+        return False
 
-    # Core dependencies
-    for dep in ("click", "pyyaml", "rich", "mitmproxy"):
+
+@click.command("doctor")
+def doctor():
+    """Print a checklist of pre-requisites for AgentGate."""
+    rows = []
+    for cid, desc, fn in _CHECKS:
         try:
-            __import__(dep)
-            _print_check(dep, None, True, quiet)
-        except ImportError:
-            _print_check(dep, None, False, quiet)
-
-    # Optional tools
-    for tool in ("git", "mitmdump", "docker"):
-        path = shutil.which(tool)
-        _print_check(tool, path or "not on PATH", path is not None, quiet)
-
-    # AgentGate state
-    click.echo()
-    click.echo("AgentGate config:")
-    home = Path.home()
-    audit_default = home / ".agentgate" / "audit.db"
-    if audit_default.exists():
-        size_kb = audit_default.stat().st_size / 1024
-        _print_check("audit db", f"{audit_default} ({size_kb:.1f} KB)", True, quiet)
+            ok = bool(fn())
+            detail = "✓" if ok else "✗"
+        except Exception as exc:
+            ok = False
+            detail = f"error: {exc}"
+        rows.append((cid, desc, ok, detail))
+    width = max(len(desc) for _, desc, _, _ in rows) + 2
+    fails = 0
+    for cid, desc, ok, _detail in rows:
+        mark = "[green]✓[/]" if ok else "[red]✗[/]"
+        console.print(f"  {mark} {desc.ljust(width)}  [{cid}]")
+        if not ok:
+            fails += 1
+    console.print("")
+    if fails:
+        console.print(f"[yellow]{fails} check(s) failed — install or configure above.[/]")
     else:
-        _print_check("audit db", f"{audit_default} (not created yet)", True, quiet)
-
-    # Hook installation
-    claude_settings = home / ".claude" / "settings.json"
-    if claude_settings.exists():
-        _print_check("claude hook", f"{claude_settings}", True, quiet)
-    else:
-        click.echo("  claude hook: not installed (run `agentgate install-hook`)")
-
-    # Notification config
-    slack_url = None
-    for env_name in ("SLACK_WEBHOOK_URL", "AGENTGATE_SLACK_WEBHOOK"):
-        import os
-        if os.environ.get(env_name):
-            slack_url = os.environ[env_name]
-            break
-    if slack_url:
-        _print_check("slack", "configured (env var)", True, quiet)
-    else:
-        click.echo("  slack: not configured (set SLACK_WEBHOOK_URL)")
-
-    click.echo()
-    click.echo("Done. Run `agentgate --help` to see available commands.")
-
-
-def _print_check(name: str, detail: str | None, ok: bool, quiet: bool) -> None:
-    status = "OK" if ok else "FAIL"
-    msg = f"  {name}: {status}"
-    if detail:
-        msg += f" ({detail})"
-    if not ok:
-        click.echo(msg, err=True)
-    elif not quiet:
-        click.echo(msg)
+        console.print("[green]All checks passed.[/]")
+    if fails:
+        sys.exit(1)

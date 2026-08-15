@@ -7,7 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.12.0] - 2026-08-15
+## [0.13.0] - 2026-08-15
+
+### Added
+- **`agentgate scan` — static config security scanner** (`scanner.py`). 35+ rules across
+  secrets / permissions / hooks / MCP-servers. Inspired by affaan-m/agentshield.
+  - Detects `sk-ant-...`, `ghp_...`, `AKIA...`, private keys, JWTs, DB connection strings.
+  - Detects `Bash(*)` / `Write(*)` / `--dangerously-skip-permissions`, `rm -rf /`.
+  - Detects command injection (`$file` in hooks), reverse shells, log tampering.
+  - Reports A–F grade + JSON output; exits 2 on critical so CI can gate.
+- **DLP egress scanner** (`dlp.py`). 50+ provider API key patterns (Anthropic, OpenAI,
+  OpenRouter, GitHub, AWS, GCP, Azure, Stripe, GitLab, Slack, Discord, Pinecone,
+  Hugging Face, Mistral, etc.) + DB connection strings + JWTs + crypto wallets.
+  Evidence redacted (`sk-an***12`). Host exemption for the provider itself so
+  legitimate calls aren't tripped.
+- **Prompt-injection scanner** in the same DLP engine. 28+ markers:
+  `ignore previous instructions`, system/role override, DAN, tool invocation
+  injection, hidden HTML instructions, Pliny divider, system prompt extraction.
+- **Shannon entropy detection** (`dlp.shannon_entropy` /
+  `looks_like_high_entropy_blob`). Threshold 4.5 bits/char catches base64
+  secrets that don't match a known provider prefix.
+- **Ed25519-signed audit receipts** (`receipts.py`). Optional per-event signing:
+  `ReceiptKeyPair` auto-generates keys into `~/.agentgate/receipts/` (0600).
+  `receipt_envelope()` signs `(prev_signature, chain_hash, action, event)`.
+  `agentgate receipts verify <audit.db>` walks the chain and verifies every
+  signature with the public key.
+- **`agentgate doctor`** — pre-flight health check. 7 readiness probes:
+  Claude Code on PATH, Node.js, Docker, GnuPG, AGENTGATE_POLICY, ~/.agentgate
+  writable, ~/.claude present.
+- **README rewrite** + **9 GitHub topics** (`ai-agents`, `security`, `firewall`,
+  `llm-security`, `claude-code`, `mcp`, `prompt-injection`, `ai-security`,
+  `agentic-ai`) for discoverability.
+- **`cryptography>=45.0.0`** new dependency.
+
+### Changed
+- **Proxy addon** (`proxy_addon.py`) now runs DLP + prompt-injection + entropy
+  scans on every request body, URL, and headers. Any CRITICAL finding auto-denies
+  the request before forwarding. Audit record includes `dlp_findings`.
+- **Audit chain** (`audit.py`) gains a `receipt_signature` column + an `_migrate()`
+  that backfills the column on existing dbs so upgrades don't lose history.
+
+### Tests
+- 228 tests passing (up from 206). New file `tests/test_v013_features.py` (22 tests).
+- ruff clean, mypy clean.
+
+### Inspiration
+- `agentshield` (static config scanner)
+- `pipelock` (DLP + entropy + signed receipts)
 
 ### Added
 - **`Codex CLI hook`** — `agentgate install-codex-hook` wires AgentGate into OpenAI's Codex CLI as a BeforeTool hook. Tool mapping (shell→Bash, apply_patch→Edit) keeps policies portable across agents.
