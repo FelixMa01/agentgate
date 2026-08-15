@@ -26,6 +26,17 @@ from urllib.parse import urlparse
 from . import __version__
 from .audit import Audit
 
+# Module-level uptime anchor — populated on first request via _touch_started().
+_DASHBOARD_STARTED_AT: float = 0.0
+_DASHBOARD_STARTED_INITIALIZED: bool = False
+
+
+def _touch_started() -> None:
+    global _DASHBOARD_STARTED_AT, _DASHBOARD_STARTED_INITIALIZED
+    if not _DASHBOARD_STARTED_INITIALIZED:
+        _DASHBOARD_STARTED_AT = time.time()
+        _DASHBOARD_STARTED_INITIALIZED = True
+
 ASKS_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -369,6 +380,7 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        _touch_started()
         parsed = urlparse(self.path)
         if parsed.path == "/" or parsed.path == "/index.html":
             body = INDEX_HTML.encode()
@@ -401,6 +413,9 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/asks/pending":
             self._api_asks_pending(parsed)
+            return
+        if parsed.path == "/metrics":
+            self._send(200, "text/plain; version=0.0.4", self._prometheus_metrics().encode())
             return
 
     def do_POST(self):
@@ -618,6 +633,40 @@ class DashboardHandler(http.server.BaseHTTPRequestHandler):
             "ask": counts.get("ask", 0),
             "log": counts.get("log", 0),
         }
+
+    def _prometheus_metrics(self) -> str:
+        """Render Prometheus exposition format from the audit DB.
+
+        Exposed metrics:
+          agentgate_events_total{action="allow|deny|ask|log"}
+          agentgate_rules_total (number of rules in the current policy)
+          agentgate_db_size_bytes (size of the audit DB file)
+          agentgate_uptime_seconds (seconds since this dashboard started)
+        """
+        from . import __version__
+        stats = self._stats()
+        lines = [
+            "# HELP agentgate_events_total Total events recorded, by action.",
+            "# TYPE agentgate_events_total counter",
+        ]
+        for action in ("allow", "deny", "ask", "log"):
+            lines.append(f'agentgate_events_total{{action="{action}"}} {stats.get(action, 0)}')
+        try:
+            db_bytes = Path(self.db_path).stat().st_size
+        except OSError:
+            db_bytes = 0
+        lines += [
+            "# HELP agentgate_db_size_bytes Audit database file size in bytes.",
+            "# TYPE agentgate_db_size_bytes gauge",
+            f"agentgate_db_size_bytes {db_bytes}",
+            "# HELP agentgate_uptime_seconds Seconds since the dashboard started.",
+            "# TYPE agentgate_uptime_seconds gauge",
+            f"agentgate_uptime_seconds {_DASHBOARD_STARTED_AT:.0f}",
+            "# HELP agentgate_info Static build info.",
+            "# TYPE agentgate_info gauge",
+            f'agentgate_info{{version="{__version__}"}} 1',
+        ]
+        return "\n".join(lines) + "\n"
 
     def _top_denied(self, limit: int = 10) -> list[dict]:
         with self._connect() as conn:

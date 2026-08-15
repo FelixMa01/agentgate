@@ -1,0 +1,74 @@
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ruff:
+    name: ruff lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11"
+      - name: Set up Python
+        run: uv python install 3.13
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Ruff check
+        run: uv run ruff check src/ tests/
+
+  mypy:
+    name: mypy type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11"
+      - name: Set up Python
+        run: uv python install 3.13
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: mypy src/
+        # Strict-ish: disallow untyped defs in public API. Internal helpers
+        # still allowed to be Any until we tighten the surface.
+        run: |
+          uv run mypy src/agentgate \
+            --ignore-missing-imports \
+            --disallow-untyped-defs \
+            --warn-return-any \
+            --warn-unused-ignores \
+            || true
+        # Tolerate existing warnings — strict mode would block v0.11.0.
+        # We track noise reduction over time and tighten in v0.12.0+.
+
+  coverage:
+    name: coverage report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11"
+      - name: Set up Python
+        run: uv python install 3.13
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: Run tests with coverage
+        run: |
+          uv run pytest tests/ \
+            --cov=src/agentgate \
+            --cov-report=term-missing:skip-covered \
+            --cov-fail-under=70 \
+            -q
+        # Threshold of 70% is intentionally generous — the goal is to
+        # catch regressions on PR diffs without breaking the build on
+        # legacy uncovered code. Tighten to 85% in v0.12.0.

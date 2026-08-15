@@ -36,6 +36,7 @@ from .cli_hosted import pull_policy, push_events
 from .cli_init import init_cmd as init
 from .cli_install_continue_hook import install_continue_hook
 from .cli_install_cursor_hook import install_cursor_hook
+from .cli_install_gemini_hook import install_gemini_hook
 from .cli_install_hook import install_hook, uninstall_hook
 from .cli_lint import lint
 from .cli_mcp import mcp_cmd as mcp
@@ -57,6 +58,7 @@ for _cmd in (
     uninstall_hook,
     install_cursor_hook,
     install_continue_hook,
+    install_gemini_hook,
     pull_policy,
     push_events,
     proxy,

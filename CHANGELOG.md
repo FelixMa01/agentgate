@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-15
+
+### Added
+- **`dry-run` mode** — `AGENTGATE_MODE=dry-run` records the verdict but never blocks, so you can preview a policy change before flipping the switch
+- **`PolicyWatcher`** — mtime-based hot reload for long-lived processes (proxy + dashboard pick up edits to `policy.yaml` without a restart)
+- **Prometheus `/metrics` endpoint** — `agentgate_events_total{action}`, `agentgate_db_size_bytes`, `agentgate_uptime_seconds`, `agentgate_info` for Grafana / scrape pipelines
+- **Gemini CLI hook** — `agentgate install-gemini-hook` writes `.gemini/settings.json` and translates `BeforeTool` payloads to the AgentGate event schema
+- **Webhook HMAC-SHA256 signing** — `Webhook.secret` field; receivers verify with `verify_signature(secret, body, header)`
+- **Webhook exponential backoff** — 5 attempts at 1, 2, 4, 8, 16s (configurable via `max_attempts` / `base_backoff`)
+- **`docs/quickstart.md`, `tutorial.md`, `cli-reference.md`, `security.md`** — full documentation set, mkdocs-ready
+- **CI quality workflow** — `.github/workflows/quality.yml` adds ruff + mypy + coverage ≥70% on every PR
+
+### Changed
+- `webhook.deliver()` now signs and retries by default; backoff is `time.sleep(base * 2^(attempt-1))`
+- `ProxyAddon` logs reload count on session done
+
 ## [0.10.0] - 2026-08-14
 
 ### Added

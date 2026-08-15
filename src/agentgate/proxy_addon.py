@@ -21,7 +21,7 @@ sys.path.insert(0, str(_HERE))
 
 from agentgate.audit import Audit  # noqa: E402
 from agentgate.network import evaluate_network  # noqa: E402
-from agentgate.policy import Action, load_policy  # noqa: E402
+from agentgate.policy import Action, PolicyWatcher  # noqa: E402
 
 
 class AgentGateAddon:
@@ -30,12 +30,26 @@ class AgentGateAddon:
         db_path = os.environ.get("AGENTGATE_DB")
         if not policy_path or not db_path:
             raise RuntimeError("AGENTGATE_POLICY and AGENTGATE_DB env vars must be set")
-        self.policy = load_policy(policy_path)
+        # PolicyWatcher hot-reloads the policy file on mtime change so edits
+        # to policy.yaml take effect without restarting mitmdump.
+        self.watcher = PolicyWatcher(policy_path)
+        self.policy = self.watcher.policy
         self.audit = Audit(db_path)
         self._intercepted = 0
+        self._reload_count = 0
+
+    def _maybe_reload(self) -> None:
+        if self.watcher.changed():
+            self.policy = self.watcher.reload()
+            self._reload_count += 1
+            print(
+                f"[agentgate] policy reloaded ({len(self.policy.rules)} rules)",
+                file=sys.stderr,
+            )
 
     # mitmproxy hook: every HTTP request before it's sent
     def request(self, flow):
+        self._maybe_reload()
         url = flow.request.pretty_url
         decision = evaluate_network(
             url, self.policy.network, default=self.policy.default_action.value
@@ -69,7 +83,11 @@ class AgentGateAddon:
 
     def done(self):
         ctx_log = getattr(self, "_intercepted", 0)
-        print(f"[agentgate] session done; intercepted {ctx_log} requests", file=sys.stderr)
+        print(
+            f"[agentgate] session done; intercepted {ctx_log} requests; "
+            f"policy reloads: {self._reload_count}",
+            file=sys.stderr,
+        )
 
 
 addons = [AgentGateAddon()]

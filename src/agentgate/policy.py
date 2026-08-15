@@ -30,11 +30,15 @@ class Mode(StrEnum):
     - enforce (default): ASK blocks until human approval, DENY blocks hard.
     - observe:           Record the decision but never block. Useful for tuning.
     - ci:                ASK becomes DENY (no interactive prompts in CI).
+    - dry-run:           Never block, never ask, never approve. Record every
+                        decision with what the outcome WOULD have been. Lets
+                        you preview a policy change before flipping the switch.
     """
 
     ENFORCE = "enforce"
     OBSERVE = "observe"
     CI = "ci"
+    DRY_RUN = "dry-run"
 
     @classmethod
     def from_env(cls) -> Mode:
@@ -43,7 +47,8 @@ class Mode(StrEnum):
             if m.value == raw:
                 return m
         raise ValueError(
-            f"Unknown AGENTGATE_MODE={raw!r}; expected one of: enforce, observe, ci"
+            f"Unknown AGENTGATE_MODE={raw!r}; "
+            f"expected one of: enforce, observe, ci, dry-run"
         )
 
 
@@ -167,9 +172,12 @@ class Policy:
 
         observe → always ALLOW (record only)
         ci      → ASK becomes DENY (no prompts in CI)
+        dry-run → always ALLOW but record the raw verdict (preview mode)
         enforce → unchanged
         """
         if self.mode is Mode.OBSERVE:
+            return Action.ALLOW
+        if self.mode is Mode.DRY_RUN:
             return Action.ALLOW
         if self.mode is Mode.CI and action is Action.ASK:
             return Action.DENY
@@ -365,3 +373,54 @@ def load_policy(path: str | Path) -> Policy:
         ),
         known_tools=set(raw.get("known_tools", []) or []),
     )
+
+
+class PolicyWatcher:
+    """Reload a policy from disk when the file changes.
+
+    Designed for long-lived processes (proxy, dashboard) that hold a
+    single Policy instance but need to pick up edits without a restart.
+    Cheap O(1) stat-then-load; safe to call on every request.
+
+    Usage:
+        watcher = PolicyWatcher("/etc/agentgate/policy.yaml")
+        policy = watcher.policy          # current snapshot
+        if watcher.changed():            # polled
+            policy = watcher.reload()
+    """
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+        self._mtime: float | None = None
+        self._policy: Policy = load_policy(self.path)
+        self._stamp()
+
+    def _stamp(self) -> None:
+        try:
+            self._mtime = self.path.stat().st_mtime
+        except FileNotFoundError:
+            self._mtime = None
+
+    @property
+    def policy(self) -> Policy:
+        return self._policy
+
+    def changed(self) -> bool:
+        """True if the file's mtime has advanced since last load."""
+        try:
+            current = self.path.stat().st_mtime
+        except FileNotFoundError:
+            return False
+        return self._mtime is None or current != self._mtime
+
+    def reload(self) -> Policy:
+        """Force a reload from disk. Returns the new Policy."""
+        self._policy = load_policy(self.path)
+        self._stamp()
+        return self._policy
+
+    def maybe_reload(self) -> Policy:
+        """Reload only if the file changed. Returns the (possibly same) Policy."""
+        if self.changed():
+            self.reload()
+        return self._policy
