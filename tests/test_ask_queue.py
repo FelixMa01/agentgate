@@ -19,12 +19,21 @@ def _free_port() -> int:
     return p
 
 
-def _start_server(db, port):
+def _start_server(db, port, retries: int = 30):
     from agentgate.dashboard import serve
     t = threading.Thread(target=serve, args=(str(db), "127.0.0.1", port), daemon=True)
     t.start()
-    time.sleep(0.3)
-    return t
+    # Poll until the dashboard port accepts connections — replaces the
+    # fixed sleep() that flaked under CI load (Connection refused on
+    # first urlopen()).
+    for _ in range(retries):
+        time.sleep(0.1)
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+                return t
+        except OSError:
+            continue
+    raise RuntimeError(f"dashboard on port {port} did not come up within {retries * 0.1:.1f}s")
 
 
 def _post(url, body):
