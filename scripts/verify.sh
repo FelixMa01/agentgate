@@ -67,12 +67,29 @@ network:
 EOF
 AGENTGATE_POLICY=/tmp/agentgate-verify-policy.yaml \
 AGENTGATE_DB=./demo/audit.db \
-  uv run mitmdump --mode regular --listen-port 18792 --quiet --set block_global=false \
+  uv run mitmdump --mode regular --listen-port 18792 --set block_global=false \
   --scripts src/agentgate/proxy_addon.py >/dev/null 2>&1 &
 PROXY_PID=$!
-sleep 3
+# Poll until the proxy accepts connections AND the agentgate addon has
+# intercepted at least one request (mitmdump + addon import + addon
+# `request()` hook all wired up). 10s budget, was previously fixed
+# sleep 3 which flaked under load.
+addon_ready=0
+for _ in $(seq 1 100); do
+    sleep 0.1
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 1 --proxy http://127.0.0.1:18792 http://example.com/ 2>/dev/null || echo 000)
+    if [ "$code" = "200" ]; then
+        # Force one deny request to confirm the addon intercepted it.
+        deny_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 1 --proxy http://127.0.0.1:18792 http://other-domain.invalid/ 2>/dev/null || echo 000)
+        if [ "$deny_code" = "403" ]; then
+            addon_ready=1
+            break
+        fi
+    fi
+done
+[ "$addon_ready" = "1" ] || echo "warning: addon not confirmed ready after 10s"
 ALLOW_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --proxy http://127.0.0.1:18792 http://example.com/ || true)
-DENY_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --proxy http://127.0.0.1:18792 http://other-domain.test/ || true)
+DENY_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 8 --proxy http://127.0.0.1:18792 http://other-domain.invalid/ || true)
 kill $PROXY_PID 2>/dev/null || true
 [ "$ALLOW_HTTP" = "200" ] && [ "$DENY_HTTP" = "403" ] && ok "network proxy (200 allow + 403 deny)" || { echo "got allow=$ALLOW_HTTP deny=$DENY_HTTP"; fail $step; }
 
